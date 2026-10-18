@@ -1,0 +1,38 @@
+{
+  "name": "switchyard",
+  "version": "0.1.0",
+  "description": "Cache-aware model routing for Claude Code: picks model and effort per turn, and only switches models when the prompt-cache math says it pays.",
+  "type": "module",
+  "bin": {
+    "switchyard": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "samples": "tsx scripts/make-sample-transcripts.ts",
+    "demo": "npm run build && node dist/cli.js analyze --dir examples/sample-transcripts --html examples/sample-report.html"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "llm-routing",
+    "prompt-caching",
+    "anthropic"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

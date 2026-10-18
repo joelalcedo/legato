@@ -1,0 +1,86 @@
+# Design
+
+## The constraint
+
+The Claude API caches by exact prefix, per model. Claude Code re-sends the whole conversation every request and normally reads almost all of it from cache. Prices on the Anthropic API (USD per million tokens, October 2026):
+
+| Model | Input | Output | 5m write | 1h write | Cache read |
+| - | - | - | - | - | - |
+| Opus 5.5 | 4 | 20 | 5 | 8 | 0.20 |
+| Sonnet 5.5 | 2 | 10 | 2.50 | 4 | 0.10 |
+| Haiku 5.5 (≤100K prompt) | 0.10 | 0.50 | 0.125 | 0.20 | 0.01 |
+| Haiku 5.5 (>100K prompt) | 0.50 | 2.50 | 0.625 | 1 | 0.05 |
+
+A cache write costs 25x a cache read on Opus and Sonnet 5.5. So a model switch on a large context is expensive, and the saving per request afterwards is small. Two consequences:
+
+1. **Opus ↔ Sonnet is where the math decides.** On a 150K context the rebuild on Sonnet costs ~$0.35, against ~$0.03 saved per request.
+2. **Dropping to Haiku is almost always worth it.** Haiku 5.5 writes are so cheap that even a 150K rebuild costs under $0.10, while each request afterwards saves ~$0.05 on reads and output.
+
+Effort is different: on Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 5 and Fable 5.1, a per-message effort change keeps the cache. So effort is the free gear and model is the expensive one.
+
+## Decision procedure
+
+For each `/v1/messages` request:
+
+1. **Pass through** if the request has no tools (Claude Code background calls such as titles) or is already on Haiku.
+2. **Hold** inside a tool loop: the last message only carries tool results. Switching here would rebuild the cache for one step, and per-message effort only takes effect on new user input anyway.
+3. **Pick a target** at a user turn:
+   - `//h //s //o //f` override, else the classifier's tier and effort.
+   - Plan mode floors at `planTier` (Opus).
+   - If the previous task produced `escalateAfterErrors` or more failing tool results, step one tier above the current model.
+   - Clamp to `[floor, ceiling]`; the default ceiling is the model Claude Code asked for.
+4. **Gate the switch on cache economics** (below). If a downshift doesn't pay, stay and apply the classifier's effort instead.
+5. **Rewrite**: set the model, make parameters valid for it (drop `thinking: disabled` on always-thinking models, clamp `max_tokens`, clamp effort), strip the override prefix, and maintain the effort ledger.
+
+## Switch economics
+
+Let `C` be the prompt size, `g` the expected growth per request (EWMA of observed growth), `o` the expected output per request (EWMA), and `r`, `w`, `out` the read, write and output prices of the current model (subscript `f`) and target (subscript `t`). `W` is the target's warm prefix if it served this conversation within the TTL, else 0.
+
+Cost of this request if we stay:
+
+    stay = (C − g)·r_f + g·w_f
+
+Cost if we switch:
+
+    switch = W·r_t + (C − W)·w_t
+
+Rebuild premium: `R = switch − stay`.
+
+Saving on each later request:
+
+    s = (C − g)·(r_f − r_t) + g·(w_f − w_t) + o·(out_f − out_t)
+
+Expected cost of coming back to the current model later after its cache expired:
+
+    B = p_return · C · w_f
+
+Downshift when:
+
+    s · N − R − B ≥ minNetSavings
+
+with `N = expectedRunRequests` (default 8, counting tool-loop steps) and `p_return = returnProbability` (default 0.3).
+
+A switch is free (no gate) when there is no cache to lose: the conversation's first request, the current model's cache older than the TTL, or `C < freeSwitchTokens`.
+
+## The effort ledger
+
+A per-message effort change is a message `{"role":"system","content":[],"output_config":{"effort":"low"}}` placed right after the user turn it applies to. Claude Code never sees it, so its next request omits it, which would change the prefix and lose the cache.
+
+The ledger stores `(index, hash of the anchor message, effort)` in Claude Code's own message indices. On every request Switchyard re-inserts each entry after its anchor if the anchor's hash still matches (hashes ignore `cache_control`, which Claude Code moves between requests). After `/compact` or `/rewind` the anchors stop matching and the entries drop, which is correct because the prefix changed anyway.
+
+## Conversation identity
+
+The key is a hash of `metadata.user_id` (which carries Claude Code's session id), the system prompt and the first message. Subagents share the session id but have their own system prompt and task, so each gets its own state, and each subagent's first request is a free routing choice.
+
+## Accounting
+
+The proxy records the cost of what ran and a counterfactual "unrouted" cost. After a switch, the unrouted model's cache would still have been warm, so the counterfactual re-prices the request's cacheable tokens as reads up to the size the unrouted model last saw. In shadow mode the reverse applies.
+
+The analyzer replays transcripts through the same engine with exact measured prompt sizes. For a routed request on a different model than the previous one, cached tokens are re-priced as reads only up to what that model last saw within the TTL, and only up to what the real request read; the rest become writes. Output tokens are held constant and effort savings are not counted, so savings estimates are conservative on cost. Quality is not measured.
+
+## What a native implementation could do better
+
+- Route on hidden state the proxy can't see (the model's own uncertainty, tool-call plans).
+- Share cache prefixes across models for the system prompt and tool definitions, if the serving stack allowed it, which would remove most of the switching penalty.
+- Learn `N` and `p_return` per user.
+- Show the routed model in the UI and let users veto a switch inline.
