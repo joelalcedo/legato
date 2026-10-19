@@ -103,7 +103,8 @@ async function main(): Promise<void> {
     case 'analyze': {
       const cfg = loadConfig(overridesFrom(flags));
       const dir = resolve(str(flags.dir) ?? join(homedir(), '.claude', 'projects'));
-      const convs = loadConversations(dir);
+      const since = parseSince(str(flags.since));
+      const convs = loadConversations(dir, { modifiedSince: since });
       if (!convs.length) {
         process.stderr.write(`No Claude Code transcripts with usage found under ${dir}\n`);
         process.exitCode = 1;
@@ -111,7 +112,7 @@ async function main(): Promise<void> {
       }
       const result = replay(convs, cfg, {
         normalizeGeneration: !flags['keep-models'],
-        since: parseSince(str(flags.since)),
+        since,
       });
       if (flags.json) {
         process.stdout.write(JSON.stringify({ totals: result.totals, conversations: result.conversations, notable: result.notable.slice(0, 200) }, null, 2) + '\n');

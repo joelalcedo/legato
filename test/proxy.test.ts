@@ -58,6 +58,7 @@ describe('rewrite', () => {
 
 /** A fake Anthropic API that records requests and streams a reply with usage. */
 interface Recorded {
+  raw: string;
   body: MessagesRequest;
   headers: IncomingMessage['headers'];
 }
@@ -92,7 +93,7 @@ describe('proxy end to end', () => {
         return;
       }
       const body = JSON.parse(raw) as MessagesRequest;
-      seen.push({ body, headers: req.headers });
+      seen.push({ raw, body, headers: req.headers });
       if (rejectModel && body.model === rejectModel) {
         res.statusCode = 400;
         res.setHeader('content-type', 'application/json');
@@ -181,8 +182,13 @@ describe('proxy end to end', () => {
 
   it('shadow mode decides but forwards the request untouched', async () => {
     await start({ mode: 'shadow' });
-    await send({ model: 'claude-opus-5-5', messages: [user('rename a to b')] });
-    assert.equal(seen[0]!.body.model, 'claude-opus-5-5');
+    // Spacing and escapes that a JSON parse-and-serialize round trip would normalize.
+    const raw = '{ "model": "claude-opus-5-5", "stream": true, "max_tokens": 32000, "tools": [{"name": "Bash"}],\n' +
+      '  "messages": [{"role": "user", "content": [{"type": "text", "text": "rename a to b \\u00e9"}]}] }';
+    await fetch(`${proxy.url}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'test' }, body: raw });
+    assert.equal(seen[0]!.raw, raw);
+    assert.equal(proxy.stats.recent[0]!.forwarded, 'original');
+    assert.equal(proxy.stats.recent[0]!.ranOn, 'claude-opus-5-5');
     assert.equal(proxy.stats.recent[0]!.routed, 'claude-haiku-5-5');
     assert.ok(proxy.stats.recent[0]!.costUsd < proxy.stats.recent[0]!.baselineUsd);
   });

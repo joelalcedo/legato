@@ -26,6 +26,8 @@ export interface NotableDecision {
   userText: string;
   reasons: string[];
   promptTokens: number;
+  /** Extra cost this request paid for the switch (cache rebuild on the new model). */
+  rebuildUsd: number;
 }
 
 export interface ConversationResult {
@@ -54,6 +56,8 @@ export interface ReplayResult {
     end: number;
     heldDownshifts: number;
     freeSwitches: number;
+    /** Requests whose transcript usage stops at stream start, so output tokens are undercounted. */
+    partialUsage: number;
   };
   /** Cumulative cost over all requests in time order, for the chart. */
   series: { t: number; baseline: number; routed: number }[];
@@ -68,6 +72,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
   const points: { t: number; baseline: number; routed: number }[] = [];
   let heldDownshifts = 0;
   let freeSwitches = 0;
+  let partialUsage = 0;
 
   for (const conv of convs) {
     const state = newState();
@@ -100,7 +105,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
         opts.normalizeGeneration && actualTier ? cfg.tiers[actualTier as Tier] : rq.model;
       const req: MessagesRequest = {
         model: incoming,
-        messages: conv.messages.slice(0, rq.messageCount),
+        messages: rq.context.slice(0, rq.messageCount),
         // Claude Code always sends its tool list; transcripts don't record it.
         tools: [{}],
       };
@@ -116,15 +121,17 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
       const continuous = state.model === undefined ? routed === incoming : state.model === routed;
       const rsplit = continuous ? split : resplit(split, state.modelCache[routed], t, cfg.cacheTtlSeconds, 'capByRead');
       const routedUsd = costOf(routed, rsplit, cfg.prices);
+      const rebuildUsd = continuous ? 0 : Math.max(0, routedUsd - costOf(routed, split, cfg.prices));
       if (!continuous) {
         r.switches++;
-        r.rebuildUsd += Math.max(0, routedUsd - costOf(routed, split, cfg.prices));
+        r.rebuildUsd += rebuildUsd;
         if (d.freeSwitch) freeSwitches++;
       }
 
       if (features.newUserTurn) {
         r.userTurns++;
-        effort ??= defaultEffort(incoming);
+        // Start from the effort Claude Code actually ran at (the user's /effort setting).
+        effort ??= (rq.effort as Effort | undefined) ?? defaultEffort(incoming);
         const effortChanged = d.effort && d.effort !== effort;
         if (effortChanged) {
           r.effortChanges++;
@@ -143,11 +150,15 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
             userText: features.userText.slice(0, 160),
             reasons: d.reasons,
             promptTokens: prompt,
+            rebuildUsd,
           });
         }
       }
 
-      observe(state, routed, prompt, split.output, t, d.effort);
+      // A stream-start output count would teach the EWMA that this conversation barely
+      // writes; the proxy sees final usage, so leave the estimate where it was.
+      if (!rq.usageFinal) partialUsage++;
+      observe(state, routed, prompt, rq.usageFinal ? split.output : 0, t, d.effort);
       const tier = tierOf(routed) ?? 'other';
       r.tierMix[tier] = (r.tierMix[tier] ?? 0) + 1;
       r.requests++;
@@ -188,6 +199,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
       tierMix,
       heldDownshifts,
       freeSwitches,
+      partialUsage,
     },
     series,
     notable: notable.sort((a, b) => a.at - b.at),

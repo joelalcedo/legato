@@ -27,6 +27,12 @@ export function textReport(r: ReplayResult, cfg: RouterConfig, source: string): 
     `  Downshifts declined because the rebuild cost more than it saved: ${t.heldDownshifts}`,
     `  Per-turn effort changes (cache-safe): ${t.effortChanges}  (their output savings are not counted above)`,
   ];
+  if (t.partialUsage) {
+    lines.push(
+      `  ${int(t.partialUsage)} requests (${pct(t.partialUsage / (t.requests || 1))}) have no final usage in the transcript; ` +
+        `their output tokens are undercounted, so costs and savings are lower bounds`,
+    );
+  }
   if (r.unpricedModels.length) lines.push(`  Unpriced models skipped: ${r.unpricedModels.join(', ')}`);
   lines.push('');
   return lines.join('\n');
@@ -73,7 +79,8 @@ export function htmlReport(r: ReplayResult, cfg: RouterConfig, source: string, s
     .slice(0, 40)
     .map(
       (n) => `<tr><td>${n.kind === 'switch' ? `${pill(n.from)} → ${pill(n.to)}` : `held ${pill(n.from)}`}${n.effort ? ` <span class="mono">${esc(n.effort)}</span>` : ''}</td>
-<td>${esc(n.userText || '(tool loop)')}<div class="reasons">${esc(n.reasons.join(' · '))}</div></td><td class="num">${int(n.promptTokens)}</td></tr>`,
+<td>${esc(n.userText || '(tool loop)')}<div class="reasons">${esc(n.reasons.join(' · '))}</div></td><td class="num">${int(n.promptTokens)}</td>
+<td class="num">${n.kind === 'switch' ? usd(n.rebuildUsd) : ''}</td></tr>`,
     )
     .join('');
   const convRows = r.conversations
@@ -102,10 +109,11 @@ ${banner}
 <div class="card"><div class="k">Model switches</div><div class="v">${int(t.switches)}</div><div class="s">${int(t.freeSwitches)} free · ${usd(t.rebuildUsd)} rebuilds</div></div>
 <div class="card"><div class="k">Downshifts declined</div><div class="v">${int(t.heldDownshifts)}</div><div class="s">rebuild would cost more than it saves</div></div>
 </div>
+${t.partialUsage ? `<p class="note">${int(t.partialUsage)} requests (${pct(t.partialUsage / (t.requests || 1))}) have no final usage in the transcript (Claude Code stops writing a response's lines before its final token count, mostly in subagents), so their output tokens are undercounted. Costs and savings here are lower bounds.</p>` : ''}
 <section><h2>Cumulative cost</h2><p class="sub">Every request in time order, unrouted versus routed.</p>${chart(r.series)}</section>
 <section><h2>Model mix with routing</h2><p class="sub">Share of API requests per tier, tool-loop steps included.</p>${mixBar(t.tierMix)}</section>
 <section><h2>What the router decided</h2><p class="sub">Model switches and declined downshifts, with the reasoning the engine logged.</p>
-<div class="scroll"><table><tr><th>Decision</th><th>User turn and reasoning</th><th class="num">Prompt tokens</th></tr>${notable || '<tr><td colspan="3">No switches.</td></tr>'}</table></div></section>
+<div class="scroll"><table><tr><th>Decision</th><th>User turn and reasoning</th><th class="num">Prompt tokens</th><th class="num">Rebuild paid</th></tr>${notable || '<tr><td colspan="4">No switches.</td></tr>'}</table></div></section>
 <section><h2>Sessions</h2><p class="sub">Most expensive first.</p><div class="scroll"><table>
 <tr><th>Session</th><th class="num">Turns</th><th class="num">Requests</th><th class="num">Switches</th><th class="num">Unrouted</th><th class="num">Routed</th><th class="num">Saved</th></tr>${convRows}</table></div></section>
 <section><h2>How to read this</h2><p class="sub">The replay runs the same decision engine as the live proxy over each recorded request.

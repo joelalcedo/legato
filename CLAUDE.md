@@ -5,7 +5,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 ## Commands
 
 - `npm install && npm run build` — compile to `dist/`
-- `npm test` — node:test suites via tsx (43 tests)
+- `npm test` — node:test suites via tsx (49 tests)
 - `npm run typecheck`
 - `npm run demo` — replay the synthetic sample transcripts and write `examples/sample-report.html`
 - `node dist/cli.js explain "<prompt>" --context 150000` — inspect one decision

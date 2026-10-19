@@ -112,9 +112,9 @@ export function isFailingToolResult(b: ContentBlock): boolean {
   return FAILURE_RE.test(toolResultText(b).slice(0, 4000));
 }
 
-/** Index of the latest user message with fresh human input, or -1. */
-export function lastFreshUserIndex(messages: Message[]): number {
-  for (let i = messages.length - 1; i >= 0; i--) {
+/** Index of the latest user message with fresh human input before `end`, or -1. */
+export function lastFreshUserIndex(messages: Message[], end = messages.length): number {
+  for (let i = end - 1; i >= 0; i--) {
     const m = messages[i]!;
     if (m.role === 'user' && freshUserText(m).length > 0) return i;
   }
@@ -175,7 +175,7 @@ export function extractFeatures(req: MessagesRequest): Features {
   const userText = newUserTurn && last ? freshUserText(last) : '';
 
   const current = countTaskSignals(messages, Math.max(0, freshIdx), messages.length);
-  const prevFresh = freshIdx > 0 ? lastFreshUserIndex(messages.slice(0, freshIdx)) : -1;
+  const prevFresh = freshIdx > 0 ? lastFreshUserIndex(messages, freshIdx) : -1;
   const previous = prevFresh >= 0 ? countTaskSignals(messages, prevFresh, freshIdx) : { errors: 0 };
 
   const turnText = freshIdx >= 0 ? rawTextOf(messages[freshIdx]!) : '';
@@ -185,6 +185,7 @@ export function extractFeatures(req: MessagesRequest): Features {
   const m = OVERRIDE_RE.exec(userText);
   if (m) override = OVERRIDE_MAP[m[1]!.toLowerCase() as keyof typeof OVERRIDE_MAP];
 
+  let estimated: number | undefined;
   return {
     newUserTurn,
     userText: userText.replace(OVERRIDE_RE, ''),
@@ -196,7 +197,11 @@ export function extractFeatures(req: MessagesRequest): Features {
     filesTouched: current.files,
     isFirstRequest: !messages.some((x) => x.role === 'assistant'),
     hasTools: Array.isArray(req.tools) && req.tools.length > 0,
-    estimatedTokens: estimateTokens(req),
+    // Serializing the history is the costliest step here, and only a conversation's
+    // first request through the proxy needs it, so compute it on demand.
+    get estimatedTokens() {
+      return (estimated ??= estimateTokens(req));
+    },
     override,
   };
 }

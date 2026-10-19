@@ -118,7 +118,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     let upstreamRes = await fetch(upstream + req.url, {
       method: 'POST',
       headers: forwardHeaders(req, sendBetas),
-      body: JSON.stringify(sendBody),
+      // Unless a rewrite is live, forward Claude Code's bytes exactly as sent.
+      body: live ? JSON.stringify(sendBody) : new Uint8Array(raw),
       signal: abort.signal,
     });
 
@@ -229,6 +230,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       costUsd,
       baselineUsd,
       status,
+      forwarded: live && !failOpen ? 'rewritten' : 'original',
+      ranOn,
       failOpen: failOpen || undefined,
       reasons: decision.reasons,
       notes: rewrite?.notes ?? [],

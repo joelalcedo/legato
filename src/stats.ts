@@ -17,6 +17,10 @@ export interface DecisionLogEntry {
   costUsd: number;
   baselineUsd: number;
   status: number;
+  /** What went upstream: Claude Code's request byte for byte, or the routed rewrite. */
+  forwarded: 'original' | 'rewritten';
+  /** Model the upstream request named. */
+  ranOn: string;
   failOpen?: boolean;
   reasons: string[];
   notes: string[];
