@@ -25,6 +25,60 @@ export interface DecisionLogEntry {
   reasons: string[];
   notes: string[];
   userPreview?: string;
+  /** Claude Code's session id, shared by a session's main thread and its subagents. */
+  sessionId?: string;
+  agentType?: string;
+  /** Trial arm, when cfg.trial applied to this conversation. */
+  arm?: 'A' | 'B';
+  /** Which classifier produced the tier: the heuristic, or the model named in config. */
+  classifier?: string;
+  /** Wall time from the request arriving to the response finishing (or being abandoned). */
+  latencyMs?: number;
+}
+
+/** What the status line shows for one Claude Code session: its main thread's latest decision and running totals. */
+export interface SessionStatus {
+  sessionId: string;
+  at: string;
+  mode: 'live' | 'shadow';
+  incoming: string;
+  model: string;
+  effort?: string;
+  incomingEffort?: string;
+  switched: boolean;
+  /** The engine's first reason, which names a hold or a switch. */
+  reason: string;
+  turns: number;
+  requests: number;
+  costUsd: number;
+  baselineUsd: number;
+}
+
+const SESSION_ID_RE = /^[0-9A-Za-z_-]{1,80}$/;
+
+function statusPath(dir: string, sessionId: string): string | undefined {
+  return SESSION_ID_RE.test(sessionId) ? join(dir, 'status', sessionId + '.json') : undefined;
+}
+
+export function writeSessionStatus(dir: string, s: SessionStatus): void {
+  const p = statusPath(dir, s.sessionId);
+  if (!p) return;
+  try {
+    mkdirSync(join(dir, 'status'), { recursive: true });
+    writeFileSync(p, JSON.stringify(s));
+  } catch {
+    /* the status line is best-effort */
+  }
+}
+
+export function readSessionStatus(dir: string, sessionId: string): SessionStatus | undefined {
+  const p = statusPath(dir, sessionId);
+  if (!p || !existsSync(p)) return undefined;
+  try {
+    return JSON.parse(readFileSync(p, 'utf8')) as SessionStatus;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Stats {
@@ -66,7 +120,7 @@ export class StatsStore {
   private logPath: string;
   private pending = false;
 
-  constructor(private dir: string, private persist = true) {
+  constructor(dir: string, private persist = true) {
     this.statsPath = join(dir, 'stats.json');
     this.logPath = join(dir, 'decisions.jsonl');
     this.stats = emptyStats();

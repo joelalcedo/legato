@@ -25,7 +25,8 @@ export function textReport(r: ReplayResult, cfg: RouterConfig, source: string): 
     `  Model mix with routing: ${mix}`,
     `  Model switches: ${t.switches} (${t.freeSwitches} at free cache boundaries), cache rebuilds paid: ${usd(t.rebuildUsd)}`,
     `  Downshifts declined because the rebuild cost more than it saved: ${t.heldDownshifts}`,
-    `  Per-turn effort changes (cache-safe): ${t.effortChanges}  (their output savings are not counted above)`,
+    `  Per-turn effort changes (cache-safe): ${t.effortChanges}`,
+    `  Output savings from those effort changes, if output scales with effort as assumed in effortOutputScale: ${usd(t.effortSavingsUsd)}  (not counted above)`,
   ];
   if (t.partialUsage) {
     lines.push(
@@ -107,7 +108,8 @@ ${banner}
 <div class="card"><div class="k">With Switchyard</div><div class="v">${usd(t.routedUsd)}</div><div class="s">cache rebuilds included</div></div>
 <div class="card"><div class="k">Saved</div><div class="v ${saved >= 0 ? 'good' : 'bad'}">${pct(t.baselineUsd ? saved / t.baselineUsd : 0)}</div><div class="s">${usd(saved)} at API list prices</div></div>
 <div class="card"><div class="k">Model switches</div><div class="v">${int(t.switches)}</div><div class="s">${int(t.freeSwitches)} free · ${usd(t.rebuildUsd)} rebuilds</div></div>
-<div class="card"><div class="k">Downshifts declined</div><div class="v">${int(t.heldDownshifts)}</div><div class="s">rebuild would cost more than it saves</div></div>
+<div class="card"><div class="k">Downshifts declined</div><div class="v">${int(t.heldDownshifts)}</div><div class="s">rebuild or lost thinking would cost more than it saves</div></div>
+<div class="card"><div class="k">Effort changes</div><div class="v">${int(t.effortChanges)}</div><div class="s">${usd(t.effortSavingsUsd)} if output scales with effort as assumed; not counted in the total</div></div>
 </div>
 ${t.partialUsage ? `<p class="note">${int(t.partialUsage)} requests (${pct(t.partialUsage / (t.requests || 1))}) have no final usage in the transcript (Claude Code stops writing a response's lines before its final token count, mostly in subagents), so their output tokens are undercounted. Costs and savings here are lower bounds.</p>` : ''}
 <section><h2>Cumulative cost</h2><p class="sub">Every request in time order, unrouted versus routed.</p>${chart(r.series)}</section>

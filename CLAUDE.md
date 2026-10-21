@@ -5,32 +5,41 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 ## Commands
 
 - `npm install && npm run build` — compile to `dist/`
-- `npm test` — node:test suites via tsx (49 tests)
+- `npm test` — node:test suites via tsx (73 tests)
 - `npm run typecheck`
 - `npm run demo` — replay the synthetic sample transcripts and write `examples/sample-report.html`
 - `node dist/cli.js explain "<prompt>" --context 150000` — inspect one decision
+- `node dist/cli.js analyze --since 30d` — replay real `~/.claude/projects` transcripts (about 20s for 30 days)
 
 ## Layout
 
 - `src/engine.ts` — the decision function and cache economics (`decide`, `switchEconomics`, `observe`). Start here.
-- `src/classifier.ts` — heuristic difficulty classifier; the intended swap-in point for a learned router.
-- `src/features.ts` — signals extracted from a Messages API request (shared by proxy and analyzer).
-- `src/rewrite.ts` — applies a decision to a request; per-message effort ledger.
-- `src/proxy.ts` — HTTP proxy, SSE usage tap, fail-open, dashboard.
-- `src/analyzer/` — transcript reader, replay, text and HTML reports.
+- `src/classifier.ts` — heuristic difficulty classifier, plus `classifyWithModel` (Haiku 5.5, optional).
+- `src/features.ts` — signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks, thinking volume.
+- `src/rewrite.ts` — applies a decision to a request; rewrites the effort on Claude Code's per-turn control message (the request's tail).
+- `src/sessions.ts` — conversation identity (session id from `metadata.user_id`, forks keyed apart) and on-disk state.
+- `src/proxy.ts` — HTTP proxy, SSE usage tap, fail-open, decision log, dashboard, per-session status files.
+- `src/stats.ts` — decision log entries, running totals, status files for `switchyard statusline`.
+- `src/analyzer/` — transcript reader (Claude Code 2.1.28x–2.1.30x formats), replay, text and HTML reports.
 - `src/pricing.ts`, `src/models.ts` — prices and model capabilities. Update when models change.
-- `docs/DESIGN.md` — derivation of the switching rule. `docs/PITCH.md` — the pitch.
+- `docs/DESIGN.md` — derivation of the switching rule. `docs/EVALUATION.md` — results on real data. `docs/ROADMAP.md`. `docs/PITCH.md`.
 
 ## Conventions
 
 - The proxy and analyzer must call the same `decide()`; never fork policy logic between them.
 - Every decision appends human-readable strings to `reasons`; keep them specific (numbers, not adjectives).
-- Anything that changes request bytes must be deterministic across requests, or it breaks the prompt cache. Add a prefix-stability test for it.
-- Savings estimates should err low: when unsure, price tokens as cache writes.
+- Anything that changes request bytes must be deterministic across requests, or it breaks the prompt cache and can invalidate preserved thinking. Never insert into or reorder the user/assistant history. Add a prefix-stability test for any change to request bytes.
+- Savings estimates should err low: when unsure, price tokens as cache writes. Assumptions (effort's effect on output) go on their own labelled line, never in the headline.
+- A policy change comes with `analyze --since <fixed date>` before and after, on the same window.
+- `report.html` and anything under `~/.switchyard` contain real prompts; never commit them.
+
+## Claude Code facts the code depends on
+
+- Every request ends with a `role: "system"` message carrying the environment block and `output_config.effort` (beta `per-turn-control-2026-07-01`). It is the tail, not history.
+- `metadata.user_id` is a JSON string with `device_id`, `account_uuid`, `session_id`. Subagents share the session id; the conversation key also hashes the system prompt, the first message and the fork boilerplate position.
+- Main-thread system prompts start "You are Claude Code, Anthropic's official CLI for Claude."; subagents start "You are a Claude agent, built on Anthropic's Claude Agent SDK." followed by a type-specific block (see `AGENT_PROMPTS` in `features.ts`).
+- On a subscription the main thread caches with `ttl: "1h"`, subagents with the 5-minute default.
 
 ## Next steps
 
-1. Run `node dist/cli.js analyze --since 30d --html report.html` on real `~/.claude/projects` data and sanity-check the decisions table.
-2. Try the proxy in `--mode shadow` against a real Claude Code session, then live.
-3. Replace or augment the heuristic classifier (Haiku 5.5 call or a RouteLLM-style model) behind `classify()`.
-4. Push to GitHub: `git remote add origin <url> && git push -u origin main`.
+See `docs/ROADMAP.md`. First: run the trial on general-purpose subagents live (`--trial general-purpose=claude-sonnet-5-5/high:50`) and compare arms.

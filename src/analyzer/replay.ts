@@ -2,7 +2,7 @@ import type { RouterConfig } from '../config.js';
 import { decide, newState, observe } from '../engine.js';
 import { extractFeatures, type MessagesRequest } from '../features.js';
 import { defaultEffort, tierOf, type Effort, type Tier } from '../models.js';
-import { costOf, promptTokens, splitUsage } from '../pricing.js';
+import { costOf, priceFor, promptTokens, splitUsage } from '../pricing.js';
 import { resplit } from '../simulate.js';
 import type { Conversation } from './transcripts.js';
 
@@ -44,6 +44,8 @@ export interface ConversationResult {
   switches: number;
   rebuildUsd: number;
   effortChanges: number;
+  /** Output cost the effort changes would save under cfg.effortOutputScale: an assumption, kept out of routedUsd. */
+  effortSavingsUsd: number;
   tierMix: Record<string, number>;
 }
 
@@ -77,6 +79,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
   for (const conv of convs) {
     const state = newState();
     let effort: Effort | undefined;
+    let ttl = cfg.cacheTtlSeconds;
     const r: ConversationResult = {
       id: conv.id,
       project: conv.project,
@@ -91,6 +94,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
       switches: 0,
       rebuildUsd: 0,
       effortChanges: 0,
+      effortSavingsUsd: 0,
       tierMix: {},
     };
 
@@ -110,6 +114,16 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
         tools: [{}],
       };
       const features = extractFeatures(req);
+      features.incomingEffort ??= rq.effort;
+      // Transcripts don't carry the system prompt; the subagent's .meta.json names its type.
+      features.agentType ??= conv.agentType;
+      if (conv.isFork) features.isFork = true;
+      // Transcripts drop cache_control; the TTL Claude Code asked for shows in which cache it wrote.
+      if (cfg.detectCacheTtl) {
+        if (split.write1h > 0) ttl = 3600;
+        else if (split.write5m > 0) ttl = 300;
+        features.cacheTtlSeconds = ttl;
+      }
       const t = rq.timestamp;
       const d = decide({ req, features, state, cfg, now: t, contextTokens: prompt });
       const routed = d.route ? d.model : incoming;
@@ -119,7 +133,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
       const baselineUsd = costOf(incoming, split, cfg.prices);
 
       const continuous = state.model === undefined ? routed === incoming : state.model === routed;
-      const rsplit = continuous ? split : resplit(split, state.modelCache[routed], t, cfg.cacheTtlSeconds, 'capByRead');
+      const rsplit = continuous ? split : resplit(split, state.modelCache[routed], t, ttl, 'capByRead');
       const routedUsd = costOf(routed, rsplit, cfg.prices);
       const rebuildUsd = continuous ? 0 : Math.max(0, routedUsd - costOf(routed, split, cfg.prices));
       if (!continuous) {
@@ -130,13 +144,11 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
 
       if (features.newUserTurn) {
         r.userTurns++;
-        // Start from the effort Claude Code actually ran at (the user's /effort setting).
-        effort ??= (rq.effort as Effort | undefined) ?? defaultEffort(incoming);
-        const effortChanged = d.effort && d.effort !== effort;
-        if (effortChanged) {
-          r.effortChanges++;
-          effort = d.effort;
-        }
+        // The turn runs at the engine's effort, else at what Claude Code asked for (the user's /effort).
+        const asked = (rq.effort as Effort | undefined) ?? defaultEffort(incoming);
+        const effortChanged = !!d.effort && d.effort !== asked;
+        effort = d.effort ?? asked;
+        if (effortChanged) r.effortChanges++;
         const held = d.economics && !d.switched && d.reasons.some((x) => x.startsWith('hold '));
         if (held) heldDownshifts++;
         if (!continuous || held || (effortChanged && notable.length < 400)) {
@@ -153,6 +165,15 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
             rebuildUsd,
           });
         }
+      }
+
+      // Effort changes the output length. That saving is priced under a stated assumption and
+      // reported on its own line, never in the headline.
+      const ran = rq.effort as Effort | undefined;
+      if (rq.usageFinal && split.output > 0 && effort && ran && effort !== ran) {
+        const scale = cfg.effortOutputScale[effort] / cfg.effortOutputScale[ran];
+        const price = priceFor(routed, prompt, cfg.prices);
+        if (price && Number.isFinite(scale)) r.effortSavingsUsd += (split.output * (1 - scale) * price.output) / 1e6;
       }
 
       // A stream-start output count would teach the EWMA that this conversation barely
@@ -196,6 +217,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
       switches: sum((r) => r.switches),
       rebuildUsd: sum((r) => r.rebuildUsd),
       effortChanges: sum((r) => r.effortChanges),
+      effortSavingsUsd: sum((r) => r.effortSavingsUsd),
       tierMix,
       heldDownshifts,
       freeSwitches,

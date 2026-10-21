@@ -48,6 +48,9 @@ export interface Conversation {
   project: string;
   sessionId: string;
   isSubagent: boolean;
+  /** 'main' for a session's own thread; a subagent's agentType from its .meta.json. */
+  agentType?: string;
+  isFork: boolean;
   /** Context of the last request's branch. */
   messages: Message[];
   requests: ReplayRequest[];
@@ -120,14 +123,29 @@ function isSubagentFile(file: string): boolean {
   return /[\\/]subagents[\\/]/.test(file);
 }
 
-/** Subagent nesting depth from the sibling .meta.json (forks of a subagent copy its lines). */
-function spawnDepth(file: string): number {
-  if (!isSubagentFile(file)) return 0;
+interface Meta {
+  /** Subagent nesting depth (forks of a subagent copy its lines, so depth orders the dedup). */
+  depth: number;
+  agentType?: string;
+  isFork: boolean;
+}
+
+/** The sibling .meta.json of a subagent transcript. */
+function readMeta(file: string): Meta {
+  if (!isSubagentFile(file)) return { depth: 0, isFork: false };
   try {
-    const meta = JSON.parse(readFileSync(file.replace(/\.jsonl$/, '.meta.json'), 'utf8')) as { spawnDepth?: number };
-    return typeof meta.spawnDepth === 'number' ? meta.spawnDepth : 1;
+    const meta = JSON.parse(readFileSync(file.replace(/\.jsonl$/, '.meta.json'), 'utf8')) as {
+      spawnDepth?: number;
+      agentType?: string;
+      isFork?: boolean;
+    };
+    return {
+      depth: typeof meta.spawnDepth === 'number' ? meta.spawnDepth : 1,
+      agentType: meta.agentType,
+      isFork: meta.isFork === true || meta.agentType === 'fork',
+    };
   } catch {
-    return 1;
+    return { depth: 1, isFork: false };
   }
 }
 
@@ -155,6 +173,7 @@ export function parseTranscript(file: string, root: string, claimed: Set<string>
   }
 
   const out: Conversation[] = [];
+  const meta = readMeta(file);
   for (const [key, s] of streams) {
     const sessionId = s.sessionId ?? basename(file, '.jsonl');
     const agent = subFile ? basename(file, '.jsonl').replace(/^agent-/, '') : key;
@@ -168,6 +187,8 @@ export function parseTranscript(file: string, root: string, claimed: Set<string>
         project,
         sessionId,
         isSubagent: s.isSubagent,
+        agentType: s.isSubagent ? meta.agentType : 'main',
+        isFork: meta.isFork,
         messages,
         requests,
       });
@@ -375,7 +396,7 @@ function mergeUsage(a: Usage, b: Usage): Usage {
  */
 export function loadConversations(dir: string, opts: { modifiedSince?: number } = {}): Conversation[] {
   const files = findTranscripts(dir, opts.modifiedSince)
-    .map((f) => ({ f, depth: spawnDepth(f) }))
+    .map((f) => ({ f, depth: readMeta(f).depth }))
     .sort((a, b) => a.depth - b.depth || (a.f < b.f ? -1 : a.f > b.f ? 1 : 0));
   const claimed = new Set<string>();
   return files.flatMap(({ f }) => parseTranscript(f, dir, claimed));

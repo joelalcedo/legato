@@ -25,6 +25,11 @@ export interface RouterConfig {
   routeEffort: boolean;
   /** Prompt cache TTL Claude Code is using: 300 (API key, usage credits) or 3600 (subscription within plan). */
   cacheTtlSeconds: number;
+  /**
+   * Read the TTL from each request's cache_control markers instead (on a subscription the
+   * main thread asks for 1h and subagents for 5m); cacheTtlSeconds is the fallback.
+   */
+  detectCacheTtl: boolean;
   /** Expected API requests a newly chosen model will serve before the next switch (tool loops included). */
   expectedRunRequests: number;
   /** Probability the router switches back before the old model's cache would have expired anyway. */
@@ -39,6 +44,26 @@ export interface RouterConfig {
   switchMidLoop: boolean;
   /** Plan mode always runs on at least this tier. */
   planTier: Tier;
+  /** Tier for a subagent's first request by agent type (read from its system prompt); the classifier decides otherwise. */
+  subagentTiers: Partial<Record<string, Tier>>;
+  /**
+   * Hold a downshift that would discard more than this many tokens of the current model's
+   * thinking, which the cheaper model can't read; effort is adjusted instead.
+   */
+  holdThinkingTokens: number;
+  /**
+   * A/B trial: route `share` (0-1) of the agents of one type to `model` (arm B), log the arm,
+   * and leave the rest as the control (arm A), so completion quality can be compared. Off unless set.
+   */
+  trial?: { agentType: string; model: string; effort?: Effort; share: number };
+  /** heuristic: the built-in regex classifier. haiku: a Haiku 5.5 call (needs ANTHROPIC_API_KEY), with the heuristic as fallback. */
+  classifier: 'heuristic' | 'haiku';
+  classifierModel: string;
+  /**
+   * Assumed output tokens per effort level, relative to xhigh. Used only for the analyzer's
+   * separate "effort savings" line; it is an assumption, not a measurement.
+   */
+  effortOutputScale: Record<Effort, number>;
   /** On an upstream 4xx/5xx for a rewritten request, retry once with the original request. */
   failOpen: boolean;
   /** Optional clamp for max_tokens per model when the router targets a model with a smaller limit. */
@@ -68,6 +93,7 @@ const BASE: RouterConfig = {
   tierEffort: { haiku: 'medium', sonnet: 'medium', opus: 'medium', fable: 'high' },
   routeEffort: true,
   cacheTtlSeconds: 300,
+  detectCacheTtl: true,
   expectedRunRequests: 8,
   returnProbability: 0.3,
   minNetSavingsUsd: 0.02,
@@ -75,8 +101,14 @@ const BASE: RouterConfig = {
   escalateAfterErrors: 2,
   switchMidLoop: false,
   planTier: 'opus',
+  subagentTiers: { Explore: 'sonnet' },
+  holdThinkingTokens: 20_000,
+  classifier: 'heuristic',
+  classifierModel: 'claude-haiku-5-5',
+  effortOutputScale: { low: 0.35, medium: 0.6, high: 0.8, xhigh: 1, max: 1.1 },
   failOpen: true,
-  maxOutputTokens: { 'claude-haiku-5-5': 64_000 },
+  // Every current model takes 128K output tokens; add an entry when routing to one that takes less.
+  maxOutputTokens: {},
   upstream: 'https://api.anthropic.com',
   port: 8787,
   host: '127.0.0.1',
@@ -110,6 +142,8 @@ function mergeConfig(base: RouterConfig, patch: Partial<RouterConfig>): RouterCo
   if (patch.tiers) out.tiers = { ...base.tiers, ...patch.tiers };
   if (patch.tierEffort) out.tierEffort = { ...base.tierEffort, ...patch.tierEffort };
   if (patch.maxOutputTokens) out.maxOutputTokens = { ...base.maxOutputTokens, ...patch.maxOutputTokens };
+  if (patch.subagentTiers) out.subagentTiers = { ...base.subagentTiers, ...patch.subagentTiers };
+  if (patch.effortOutputScale) out.effortOutputScale = { ...base.effortOutputScale, ...patch.effortOutputScale };
   return out;
 }
 
@@ -140,4 +174,6 @@ function validate(cfg: RouterConfig): void {
   if (!cfg.enabledTiers.length) throw new Error('enabledTiers must include at least one tier');
   if (!['live', 'shadow'].includes(cfg.mode)) throw new Error(`mode must be live or shadow, got ${cfg.mode}`);
   if (cfg.cacheTtlSeconds <= 0) throw new Error('cacheTtlSeconds must be positive');
+  if (!['heuristic', 'haiku'].includes(cfg.classifier)) throw new Error(`classifier must be heuristic or haiku, got ${cfg.classifier}`);
+  if (cfg.trial && !(cfg.trial.share >= 0 && cfg.trial.share <= 1)) throw new Error('trial.share must be between 0 and 1');
 }

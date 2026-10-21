@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { htmlReport, textReport } from './analyzer/report.js';
@@ -9,16 +9,21 @@ import { loadConfig, type Mode, type Preset, type RouterConfig } from './config.
 import { decide, newState } from './engine.js';
 import { extractFeatures, type MessagesRequest } from './features.js';
 import { usd } from './html.js';
+import type { Effort } from './models.js';
 import { startProxy } from './proxy.js';
-import { readStats } from './stats.js';
+import { readSessionStatus, readStats, type SessionStatus } from './stats.js';
 
 const HELP = `switchyard: cache-aware model routing for Claude Code
 
 Usage
   switchyard start [--port 8787] [--mode live|shadow] [--preset balanced] [--ttl 300]
+                   [--classifier heuristic|haiku] [--trial <agentType>=<model>[/<effort>][:<share%>]]
       Run the routing proxy. Then, in another terminal:
         ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model opus
       Dashboard: http://127.0.0.1:8787/switchyard
+      --classifier haiku asks Haiku 5.5 to classify each user turn (needs ANTHROPIC_API_KEY).
+      --trial general-purpose=claude-sonnet-5-5/high:50 routes half of those subagents to
+      Sonnet and logs the arm, so the two halves can be compared.
 
   switchyard analyze [--dir ~/.claude/projects] [--since 30d] [--preset balanced]
                      [--ttl 300] [--html report.html] [--json] [--keep-models]
@@ -29,7 +34,9 @@ Usage
       Show the decision the engine makes for one user turn.
 
   switchyard stats        Print totals from the running or last proxy session.
-  switchyard statusline   One-line status for Claude Code's statusLine setting.
+  switchyard statusline   One line for Claude Code's statusLine setting: the model and effort this
+                          session is running on, and what the routing has saved. Add to settings.json:
+                          "statusLine": {"type": "command", "command": "switchyard statusline"}
 
 Presets: conservative (never below Sonnet), balanced (default), aggressive.
 Per-turn override: start a prompt with //h, //s, //o or //f to force Haiku, Sonnet, Opus or Fable.
@@ -63,12 +70,55 @@ function overridesFrom(flags: Record<string, string | boolean>): Partial<RouterC
   if (str(flags.mode)) o.mode = str(flags.mode) as Mode;
   if (str(flags.port)) o.port = Number(flags.port);
   if (str(flags.host)) o.host = str(flags.host)!;
-  if (str(flags.ttl)) o.cacheTtlSeconds = Number(flags.ttl);
+  if (str(flags.ttl)) {
+    o.cacheTtlSeconds = Number(flags.ttl);
+    o.detectCacheTtl = false;
+  }
   if (str(flags.upstream)) o.upstream = str(flags.upstream)!;
   if (str(flags['data-dir'])) o.dataDir = resolve(str(flags['data-dir'])!);
   if (flags['no-effort']) o.routeEffort = false;
   if (flags.fable) o.enabledTiers = ['haiku', 'sonnet', 'opus', 'fable'];
+  if (str(flags.classifier)) o.classifier = str(flags.classifier) as RouterConfig['classifier'];
+  if (str(flags.trial)) o.trial = parseTrial(str(flags.trial)!);
   return o;
+}
+
+/** general-purpose=claude-sonnet-5-5/high:50 -> route half of those agents to Sonnet at high effort. */
+function parseTrial(v: string): RouterConfig['trial'] {
+  const m = /^([^=]+)=([^/:]+)(?:\/([a-z]+))?(?::(\d+))?$/.exec(v);
+  if (!m) throw new Error(`--trial expects <agentType>=<model>[/<effort>][:<share%>], got ${v}`);
+  return { agentType: m[1]!, model: m[2]!, effort: m[3] as Effort | undefined, share: m[4] ? Number(m[4]) / 100 : 0.5 };
+}
+
+function readStdinJson(): Record<string, unknown> {
+  if (process.stdin.isTTY) return {};
+  try {
+    return JSON.parse(readFileSync(0, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function displayName(model: string): string {
+  const m = /claude-(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d+))?/.exec(model);
+  if (!m) return model;
+  return `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}${m[3] ? '.' + m[3] : ''}`;
+}
+
+/** One line, under 80 characters where it can be: what this session runs on and why. */
+export function formatStatus(s: SessionStatus): string {
+  const saved = s.baselineUsd - s.costUsd;
+  let model = displayName(s.model) + (s.effort ? ` · ${s.effort}` : '');
+  if (s.model !== s.incoming) model += ` ← ${displayName(s.incoming)}`;
+  else if (s.effort && s.incomingEffort && s.effort !== s.incomingEffort) model += ` (asked ${s.incomingEffort})`;
+  let why = '';
+  if (s.reason.startsWith('hold ')) {
+    const rebuild = /rebuild \$([\d.]+)/.exec(s.reason);
+    const thinking = /drop ~(\d+K) tokens/.exec(s.reason);
+    why = thinking ? ` · held: ${thinking[1]} of thinking` : rebuild ? ` · held: rebuild $${Number(rebuild[1]).toFixed(2)}` : ' · held';
+  }
+  const verb = s.mode === 'shadow' ? 'would save' : 'saved';
+  return `⇄ ${s.mode === 'shadow' ? 'shadow · ' : ''}${model}${why} · ${verb} ${usd(saved)} over ${s.turns} turn${s.turns === 1 ? '' : 's'}`;
 }
 
 function parseSince(v: string | undefined): number | undefined {
@@ -184,14 +234,22 @@ async function main(): Promise<void> {
 
     case 'statusline': {
       const cfg = loadConfig(overridesFrom(flags));
+      // Claude Code pipes its session JSON in; the proxy writes one status file per session id.
+      const input = readStdinJson();
+      const sessionId = typeof input.session_id === 'string' ? input.session_id : undefined;
+      const status = sessionId ? readSessionStatus(cfg.dataDir, sessionId) : undefined;
+      if (status) {
+        process.stdout.write(formatStatus(status) + '\n');
+        return;
+      }
       const s = readStats(cfg.dataDir);
       if (!s || !s.last) {
-        process.stdout.write('⇄ switchyard idle\n');
+        process.stdout.write(sessionId ? '⇄ switchyard: this session is not going through the proxy\n' : '⇄ switchyard idle\n');
         return;
       }
       const saved = s.baselineUsd - s.costUsd;
       const share = s.baselineUsd > 0 ? ` (${((saved / s.baselineUsd) * 100).toFixed(0)}%)` : '';
-      process.stdout.write(`⇄ ${s.last.routed.replace(/^claude-/, '')}${s.last.effort ? '·' + s.last.effort : ''} · saved ${usd(saved)}${share}\n`);
+      process.stdout.write(`⇄ all sessions: last ${displayName(s.last.routed)}${s.last.effort ? ' · ' + s.last.effort : ''} · saved ${usd(saved)}${share}\n`);
       return;
     }
 
