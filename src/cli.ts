@@ -242,9 +242,14 @@ async function main(): Promise<void> {
         process.stdout.write(formatStatus(status) + '\n');
         return;
       }
+      // A session the proxy has never seen must not borrow other sessions' numbers.
+      if (sessionId) {
+        process.stdout.write('⇄ switchyard: this session is not going through the proxy\n');
+        return;
+      }
       const s = readStats(cfg.dataDir);
       if (!s || !s.last) {
-        process.stdout.write(sessionId ? '⇄ switchyard: this session is not going through the proxy\n' : '⇄ switchyard idle\n');
+        process.stdout.write('⇄ switchyard idle\n');
         return;
       }
       const saved = s.baselineUsd - s.costUsd;
