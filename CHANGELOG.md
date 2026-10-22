@@ -24,6 +24,10 @@
   model's thinking is held, and effort adjusted instead.
 - The user's `/effort` is a ceiling: hard turns keep it, others may run lower.
 - Escalation happens only when the previous task ended on failing tool results.
+- A greeting ("hi", "hello", "good morning") goes to Haiku. It usually opens a session, and whatever
+  answers it writes the cache for the whole system prompt; the real task that follows pays to
+  rebuild on its own model either way, so the cheapest first write wins. Neutral on the month's
+  replay ($539.61 to $540.02 on the same window); it was the first thing a new user saw go wrong.
 - A message carrying tool results is a loop step even when it also carries text.
 - Claude Code's wrappers, notifications, compaction summaries and skill bodies are not user prompts.
 - The cache TTL is read from each request's `cache_control` markers (`detectCacheTtl`).
@@ -49,6 +53,10 @@
 - The status line reports a request the router forwarded as sent, or one the API rejected, instead
   of claiming the session is not going through the proxy. `/health` returns the build id and pid.
 - After a fail-open, neither the routed model nor the effort is recorded as having run.
+- The live proxy charges the cold-cache rebuild when a hard task brings Opus back after a stretch
+  on Sonnet. That request goes up unchanged, and it was priced as if Claude Code alone would have
+  paid the rebuild too; the session's "saved" figure was overstated by the rebuild. On the filmed
+  session: $0.84 logged, $0.52 with the rebuild charged.
 - Removed the stale 64K `max_tokens` clamp for Haiku 5.5.
 
 ### Analyzer

@@ -132,6 +132,7 @@ describe('proxy end to end', () => {
   let upstream: Server;
   let upstreamUrl = '';
   const seen: Recorded[] = [];
+  const warm = new Set<string>();
   let rejectModel: string | undefined;
   let proxy: RunningProxy;
 
@@ -154,7 +155,12 @@ describe('proxy end to end', () => {
         return;
       }
       res.setHeader('content-type', 'text/event-stream');
-      res.end(sse(body.model, { input_tokens: 5, cache_read_input_tokens: 20_000, cache_creation_input_tokens: 2_000 }));
+      // Each model has its own cache: the first request on a model writes everything, later ones read.
+      const cold = !warm.has(body.model);
+      warm.add(body.model);
+      res.end(
+        sse(body.model, cold ? { input_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 22_000 } : { input_tokens: 5, cache_read_input_tokens: 20_000, cache_creation_input_tokens: 2_000 }),
+      );
     });
     await new Promise<void>((r) => upstream.listen(0, '127.0.0.1', () => r()));
     const a = upstream.address();
@@ -171,6 +177,7 @@ describe('proxy end to end', () => {
     const cfg = { ...defaultConfig(), upstream: upstreamUrl, port: 0, ...patch };
     proxy = await startProxy({ cfg, persist, log: () => {} });
     seen.length = 0;
+    warm.clear();
   }
 
   async function send(body: Partial<MessagesRequest>, beta = 'oauth-2025-04-20,per-turn-control-2026-07-01') {
@@ -249,6 +256,27 @@ describe('proxy end to end', () => {
     } finally {
       rejectModel = undefined;
     }
+  });
+
+  it('charges the cold-cache rebuild when a hard turn brings Opus back, although nothing in the request was rewritten', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'sy-rebuild-'));
+    await start({ dataDir }, true);
+    const first = user('add a loading state to the table');
+    await send({ messages: [first, control('xhigh')] });
+    assert.equal(seen[0]!.body.model, 'claude-sonnet-5-5');
+    const hard: Message[] = [first, { role: 'assistant', content: 'done' }, user('Why does the scheduler deadlock under load? Find the root cause.'), control('xhigh')];
+    await send({ messages: hard });
+    assert.equal(seen[1]!.body.model, 'claude-opus-5-5');
+    const e = proxy.stats.recent[0]!;
+    assert.equal(e.routed, 'claude-opus-5-5');
+    assert.equal(e.switched, true);
+    assert.equal(e.forwarded, 'original'); // Claude Code asked for Opus at xhigh; the bytes went as sent
+    // Opus wrote the whole prefix because it had never served this conversation; Claude Code alone
+    // would have read it from the cache it wrote at turn 1. That difference is the rebuild, and it counts.
+    assert.ok(e.costUsd > e.baselineUsd, `cost ${e.costUsd} should exceed the warm baseline ${e.baselineUsd}`);
+    assert.ok(e.baselineUsd < 0.02, `baseline ${e.baselineUsd} should be reads, not writes`);
+    const status = readSessionStatus(dataDir, SESSION)!;
+    assert.ok(status.costUsd > status.baselineUsd, 'the session is behind after paying the rebuild');
   });
 
   it('shadow mode decides but forwards the request untouched', async () => {

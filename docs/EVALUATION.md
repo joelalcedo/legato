@@ -58,6 +58,8 @@ every cache rebuild.
 | Same policy, next window | Sep 21 to Oct 21 | $473 (9.3%) | 151 (117) | $82 |
 | + route Explore subagents to Sonnet by type; hold forks; hold moves to a cheaper model that would drop thinking | Sep 21 to Oct 21 | $504 (9.9%) | 173 (139) | $82 |
 | Same policy, the window the README charts show | Sep 21 to Oct 22 | $529 (10.2%) | 180 (143) | $86 |
+| Same policy, same window a day later (286 sessions) | Sep 21 to Oct 22 | $540 (10.4%) | 184 (145) | $91 |
+| + greetings go to Haiku | Sep 21 to Oct 22 | $540 (10.4%) | 186 (147) | $91 |
 
 The gap between 12.7% and 9.9% comes from the data: the earlier window had sessions
 started on Fable 5.1, which the router moves to Opus at the first request, and that one kind of

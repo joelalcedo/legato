@@ -46,6 +46,10 @@ const EASY: Rule[] = [
   { re: /^\s*(where is|where are|find|list|show me|which files?|what files?|grep|search for|look up)\b/i, weight: 2, label: 'lookup' },
   { re: /\b(run (the )?(tests?|build|linter|script)|npm (run|test|install)|install (the )?dep)/i, weight: 1, label: 'run-command' },
   { re: /^\s*(thanks|thank you|ty|cool|nice|great|perfect)\b[.! ]*$/i, weight: 3, label: 'acknowledgement' },
+  // A greeting usually opens a session. Whatever answers it writes the cache for the whole system
+  // prompt, and the real task that follows pays to rebuild on its own model either way, so the
+  // cheapest model should take it.
+  { re: /^\s*(hi|hello|hey|hiya|howdy|yo|good (morning|afternoon|evening))\b[,.! ]*(there|claude|again)?[.! ]*$/i, weight: 3, label: 'greeting' },
 ];
 
 /** Short confirmations kick off execution of an already-agreed plan: route to the workhorse, not Haiku. */

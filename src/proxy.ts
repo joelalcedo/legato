@@ -243,7 +243,11 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     let costUsd: number;
     let baselineUsd: number;
     const continuous = session.state.model === routedModel;
-    if (live && !failOpen) {
+    // In live mode the request ran on the routed model even when nothing in it was rewritten:
+    // a hard turn that brings Opus back after a stretch on Sonnet goes up unchanged, and its
+    // cold-cache cost is the rebuild the unrouted baseline would never have paid.
+    const ranAsRouted = cfg.mode === 'live' && decision.route && !failOpen;
+    if (ranAsRouted) {
       costUsd = costOf(ranOn, split, cfg.prices);
       const baseSplit =
         routedModel === original.model && (continuous || !session.state.model)

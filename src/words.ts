@@ -86,6 +86,7 @@ const SIGNAL_WORDS: Record<string, string> = {
   lookup: 'a lookup',
   'run-command': 'running a command',
   acknowledgement: 'an acknowledgement',
+  greeting: 'a greeting',
   'long-prompt': 'a long prompt',
   'medium-prompt': 'a medium-length prompt',
   confirmation: 'a confirmation',
