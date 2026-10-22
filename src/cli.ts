@@ -41,7 +41,7 @@ Usage
       Replay your Claude Code transcripts through the router and report what it
       would have cost, with cache rebuilds priced in.
 
-  legato explain "<prompt>" [--context 120000] [--current claude-opus-5-5] [--idle 30]
+  legato explain "<prompt>" [--context 120000] [--current claude-opus-5-5] [--idle 30] [--effort xhigh]
       Show the decision the engine makes for one user turn.
 
   legato stats        Print totals from the running or last proxy session.
@@ -300,9 +300,12 @@ async function main(): Promise<void> {
       state.lastPromptTokens = ctx;
       state.lastRequestAt = now - idle * 1000;
       state.modelCache[current] = { at: now - idle * 1000, promptTokens: ctx };
+      const askedEffort = str(flags.effort);
       const req: MessagesRequest = {
         model: str(flags.incoming) ?? current,
         tools: [{}],
+        // The effort Claude Code would have asked for (its /effort setting); the engine treats it as a ceiling.
+        ...(askedEffort ? { output_config: { effort: askedEffort } } : {}),
         messages: [
           { role: 'user', content: 'earlier turn' },
           { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
