@@ -51,6 +51,8 @@ export interface RouterConfig {
    * "let the router choose, up to this model". Claude Code's header then shows the alias.
    */
   modelAliases: Record<string, string>;
+  /** The model name `switchyard claude` launches Claude Code with; its header shows this text. */
+  launchModel: string;
   /**
    * Hold a downshift that would discard more than this many tokens of the current model's
    * thinking, which the cheaper model can't read; effort is adjusted instead.
@@ -107,7 +109,8 @@ const BASE: RouterConfig = {
   switchMidLoop: false,
   planTier: 'opus',
   subagentTiers: { Explore: 'sonnet' },
-  modelAliases: { dynamic: 'claude-opus-5-5', auto: 'claude-opus-5-5', switchyard: 'claude-opus-5-5' },
+  modelAliases: { 'Dynamic mode': 'claude-opus-5-5', dynamic: 'claude-opus-5-5', auto: 'claude-opus-5-5', switchyard: 'claude-opus-5-5' },
+  launchModel: 'Dynamic mode',
   holdThinkingTokens: 20_000,
   classifier: 'heuristic',
   classifierModel: 'claude-haiku-5-5',
@@ -138,6 +141,19 @@ const PRESETS: Record<Preset, Partial<RouterConfig>> = {
     escalateAfterErrors: 3,
   },
 };
+
+/** The model a launch alias stands for, matched without regard to case, spaces or hyphens. */
+export function resolveAlias(cfg: RouterConfig, model: string): string | undefined {
+  const key = normalizeAlias(model);
+  for (const [alias, target] of Object.entries(cfg.modelAliases)) {
+    if (normalizeAlias(alias) === key) return target;
+  }
+  return undefined;
+}
+
+function normalizeAlias(name: string): string {
+  return name.trim().toLowerCase().replace(/[\s_-]+/g, ' ');
+}
 
 export function defaultConfig(preset: Preset = 'balanced'): RouterConfig {
   return mergeConfig(structuredClone(BASE), { preset, ...PRESETS[preset] });

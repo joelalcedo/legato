@@ -1,6 +1,8 @@
+import { statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { classifyWithModel } from './classifier.js';
-import type { RouterConfig } from './config.js';
+import { resolveAlias, type RouterConfig } from './config.js';
 import { decide, observe, type Decision } from './engine.js';
 import { extractFeatures, type Features, type MessagesRequest } from './features.js';
 import { esc, int, mixBar, page, pill, tierOfModelName, usd } from './html.js';
@@ -77,6 +79,15 @@ function preview(text: string): string {
   return t.length > 90 ? t.slice(0, 87) + '...' : t;
 }
 
+/** Identifies the code a running proxy was started from, so a launcher can tell it is stale. */
+export const BUILD: string = (() => {
+  try {
+    return String(Math.round(statSync(fileURLToPath(import.meta.url)).mtimeMs));
+  } catch {
+    return 'unknown';
+  }
+})();
+
 interface Outcome {
   usage: Usage;
   status: number;
@@ -128,8 +139,9 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     }
     // `claude --model dynamic`: the alias means "route it, up to this model". The API has never
     // heard of it, so the forwarded body carries the real name even when nothing else changes.
-    const alias = cfg.modelAliases[original.model] ? original.model : undefined;
-    if (alias) original = { ...original, model: cfg.modelAliases[alias]! };
+    const aliasTarget = resolveAlias(cfg, original.model);
+    const alias = aliasTarget ? original.model : undefined;
+    if (aliasTarget) original = { ...original, model: aliasTarget };
     const sent = alias ? Buffer.from(JSON.stringify(original)) : raw;
     const t0 = now();
     const features = extractFeatures(original);
@@ -291,25 +303,33 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     };
     stats.record(entry, decision.route);
 
-    // The status line shows the session's main thread, not its subagents.
-    if (persist && sessionId && decision.route && (features.agentType === 'main' || features.agentType === undefined)) {
+    // The status line shows the session's main thread, not its subagents. Requests the router
+    // forwarded as sent (unknown model) and upstream failures are shown too, so the line never
+    // claims a session is not going through the proxy when it is; background requests (no tools)
+    // are left out so they don't flicker the line after every turn.
+    const mainThread = features.agentType === 'main' || features.agentType === undefined;
+    if (persist && sessionId && mainThread && (decision.route || features.hasTools)) {
       const totals = statusTotals.get(sessionId) ?? { turns: 0, requests: 0, costUsd: 0, baselineUsd: 0 };
-      totals.requests++;
-      if (features.newUserTurn) totals.turns++;
-      totals.costUsd += costUsd;
-      totals.baselineUsd += baselineUsd;
-      statusTotals.set(sessionId, totals);
+      if (decision.route) {
+        totals.requests++;
+        if (features.newUserTurn) totals.turns++;
+        totals.costUsd += costUsd;
+        totals.baselineUsd += baselineUsd;
+        statusTotals.set(sessionId, totals);
+      }
       writeSessionStatus(cfg.dataDir, {
         sessionId,
         at: entry.ts,
         mode: cfg.mode,
-        incoming: original.model,
+        incoming: alias ?? original.model,
         model: entry.routed,
         effort: entry.effort,
         incomingEffort: features.incomingEffort,
         alias,
         switched: entry.switched,
         reason: decision.reasons[0] ?? '',
+        through: decision.route,
+        lastStatus: status,
         ...totals,
       });
     }
@@ -336,7 +356,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         return;
       }
       if (req.method === 'GET' && path === '/health') {
-        res.end('ok');
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ ok: true, build: BUILD, pid: process.pid, mode: cfg.mode }));
         return;
       }
       const body = await readBody(req);

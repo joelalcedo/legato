@@ -48,18 +48,17 @@ npm install && npm run build && npm link
 # 1. What it would have done on your own history, cache rebuilds included.
 switchyard analyze --since 30d --html report.html
 
-# 2. Shadow mode: decides and logs, forwards every request untouched.
-switchyard start --mode shadow
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
-
-# 3. Live.
-switchyard start
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model dynamic
+# 2. Run Claude Code through it. Starts the proxy if it isn't running.
+switchyard claude
 ```
+
+The header reads `Dynamic mode with xhigh effort`, and the status line below says what each turn actually ran on. Any Claude Code arguments pass through: `switchyard claude --resume`.
+
+To watch before committing, run the proxy in shadow mode first: `switchyard start --mode shadow` in one terminal, then `switchyard claude` in another. Shadow mode decides and logs but forwards every request as sent.
 
 Dashboard: http://127.0.0.1:8787/switchyard. Decision log: `~/.switchyard/decisions.jsonl`.
 
-**`--model dynamic`.** Claude Code's header names the model it was launched with and nothing outside the binary can change that line. `dynamic` is an alias the proxy resolves (`modelAliases` in the config; by default it means "route, up to Opus 5.5"), so the header reads `dynamic` instead of naming a model that isn't the one running. Launching with a real model name works too; the router treats it as the ceiling.
+**What `switchyard claude` does.** Claude Code's header names the model it was launched with, and nothing outside the binary can change that line. So it is launched with `--model "Dynamic mode"`, an alias the proxy resolves (`modelAliases` in the config; by default "route, up to Opus 5.5") and never forwards to the API. Because Claude Code doesn't know that name, the launcher also sets `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000` (otherwise it assumes a 200K window and warns) and the `ANTHROPIC_CUSTOM_MODEL_OPTION*` variables that put "Dynamic mode" in the `/model` picker with effort and thinking enabled. Launching by hand with a real model name works too; the router treats it as the ceiling.
 
 **Status line.** The line at the bottom shows what this session is actually running on, in words. In `~/.claude/settings.json`:
 
@@ -123,7 +122,7 @@ examples/          synthetic transcripts and the demo report
 
 - The analyzer holds output length constant across models and cannot see quality. Validate in shadow mode, then with a `trial`.
 - The default classifier is a transparent keyword heuristic; the Haiku classifier needs an API key because a subscription's OAuth token can't be used for other calls.
-- Claude Code's own header line cannot be changed from outside. `--model dynamic` makes it say `dynamic`; the status line says what is running. Claude Code may treat an unknown model name conservatively (context window, output limit), which the live log will show.
+- Claude Code's own header line cannot be changed from outside. The launch alias makes it say `Dynamic mode`; the status line says what is running. If you launch by hand with the alias and without `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, Claude Code assumes a 200K window and compacts earlier than it would on Opus.
 - Haiku 5.5 is rarely chosen on long sessions: its price multiplies by five above 100K tokens of prompt.
 
 ## Contributing and license

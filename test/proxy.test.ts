@@ -270,14 +270,39 @@ describe('proxy end to end', () => {
     assert.equal(seen[1]!.body.model, 'claude-haiku-5-5');
     const status = readSessionStatus(dataDir, SESSION)!;
     assert.equal(status.alias, 'dynamic');
-    assert.equal(status.incoming, 'claude-opus-5-5');
+    assert.equal(status.incoming, 'dynamic'); // what Claude Code asked for, as the user typed it
     assert.equal(status.model, 'claude-haiku-5-5');
-    // Shadow mode too.
+    // Shadow mode too, and the alias is matched loosely: Claude Code's header shows it verbatim.
     await start({ mode: 'shadow' });
-    await send({ model: 'dynamic', messages: [user('rename a to b'), control('xhigh')] });
+    await send({ model: 'Dynamic Mode', messages: [user('rename a to b'), control('xhigh')] });
     assert.equal(seen[0]!.body.model, 'claude-opus-5-5');
     assert.equal(proxy.stats.recent[0]!.forwarded, 'aliased');
     assert.equal(proxy.stats.recent[0]!.routed, 'claude-haiku-5-5');
+  });
+
+  it('tells the status line when a request was forwarded as sent or failed upstream', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'sy-fail-'));
+    await start({ dataDir }, true);
+    rejectModel = 'gpt-5';
+    try {
+      const { res } = await send({ model: 'gpt-5', messages: [user('Test'), control('xhigh')] });
+      assert.equal(res.status, 400);
+    } finally {
+      rejectModel = undefined;
+    }
+    let status = readSessionStatus(dataDir, SESSION)!;
+    assert.equal(status.through, false);
+    assert.equal(status.lastStatus, 400);
+    assert.equal(status.reason, 'unrecognized model family');
+    // A background request must not overwrite what the line shows.
+    await send({ model: 'claude-opus-5-5', tools: [], messages: [user('title please')] });
+    status = readSessionStatus(dataDir, SESSION)!;
+    assert.equal(status.lastStatus, 400);
+    // The health endpoint identifies the build, so a launcher can tell a stale proxy.
+    const health = (await (await fetch(`${proxy.url}/health`)).json()) as { ok: boolean; build: string; pid: number };
+    assert.equal(health.ok, true);
+    assert.equal(health.pid, process.pid);
+    assert.ok(health.build.length > 0);
   });
 
   it("writes a status file for the session's main thread and keeps session state across a restart", async () => {

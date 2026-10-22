@@ -47,8 +47,12 @@ export interface SessionStatus {
   model: string;
   effort?: string;
   incomingEffort?: string;
-  /** The model name Claude Code was launched with when it is an alias such as `dynamic`. */
+  /** The model name Claude Code was launched with when it is an alias such as `Dynamic mode`. */
   alias?: string;
+  /** false: the last request was forwarded as sent (unknown model, routing off). */
+  through?: boolean;
+  /** HTTP status of the last request, so a failing session says so instead of showing stale numbers. */
+  lastStatus?: number;
   switched: boolean;
   /** The engine's first reason, which names a hold or a switch. */
   reason: string;
@@ -73,6 +77,12 @@ export function displayName(model: string): string {
  *   ⇄ dynamic: running on Haiku 5.5 at low effort · saved $0.70 over 1 turn
  */
 export function formatStatus(s: SessionStatus): string {
+  if (s.lastStatus !== undefined && s.lastStatus >= 400 && s.lastStatus !== 499) {
+    const what = s.lastStatus === 404 ? `the API does not know the model "${s.incoming}"` : `HTTP ${s.lastStatus} from the API`;
+    const hint = s.through === false ? ` · ${s.reason}; if you just rebuilt switchyard, restart the proxy` : '';
+    return `⇄ switchyard: last request failed, ${what}${hint}`;
+  }
+  if (s.through === false) return `⇄ switchyard: forwarding "${s.incoming}" as sent (${s.reason})`;
   const saved = s.baselineUsd - s.costUsd;
   const shadow = s.mode === 'shadow';
   let line = `⇄ ${s.alias ? s.alias + ': ' : ''}${shadow ? 'shadow: would run' : 'running'} on ${displayName(s.model)}`;

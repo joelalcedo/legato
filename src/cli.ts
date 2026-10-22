@@ -1,28 +1,35 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { htmlReport, textReport } from './analyzer/report.js';
 import { replay } from './analyzer/replay.js';
 import { loadConversations } from './analyzer/transcripts.js';
-import { loadConfig, type Mode, type Preset, type RouterConfig } from './config.js';
+import { loadConfig, resolveAlias, type Mode, type Preset, type RouterConfig } from './config.js';
 import { decide, newState } from './engine.js';
 import { extractFeatures, type MessagesRequest } from './features.js';
 import { usd } from './html.js';
 import type { Effort } from './models.js';
-import { startProxy } from './proxy.js';
+import { BUILD, startProxy } from './proxy.js';
 import { displayName, formatStatus, readSessionStatus, readStats } from './stats.js';
 
 const HELP = `switchyard: cache-aware model routing for Claude Code
 
 Usage
+  switchyard claude [any claude arguments]
+      The normal way to run. Starts the proxy if it isn't running, then launches Claude Code
+      through it as "Dynamic mode": the header says so, and the status line says which model
+      and effort each turn actually ran on. Arguments go to claude unchanged (e.g. --resume).
+
   switchyard start [--port 8787] [--mode live|shadow] [--preset balanced] [--ttl 300]
                    [--classifier heuristic|haiku] [--trial <agentType>=<model>[/<effort>][:<share%>]]
-      Run the routing proxy. Then, in another terminal:
-        ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model dynamic
-      "dynamic" is an alias the proxy resolves (modelAliases in config.json; default: route up to
-      Opus 5.5), so Claude Code's header says "dynamic" instead of naming one model. Launching
-      with a real model name works too; the router then treats it as the ceiling.
+      Run the proxy by itself (shadow mode decides and logs but forwards every request as
+      sent). Then, in another terminal, "switchyard claude", or by hand:
+        ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model "Dynamic mode"
+      "Dynamic mode" is an alias the proxy resolves (modelAliases in config.json; default:
+      route up to Opus 5.5). A real model name works too and becomes the ceiling.
       Dashboard: http://127.0.0.1:8787/switchyard
       --classifier haiku asks Haiku 5.5 to classify each user turn (needs ANTHROPIC_API_KEY).
       --trial general-purpose=claude-sonnet-5-5/high:50 routes half of those subagents to
@@ -111,18 +118,93 @@ function parseSince(v: string | undefined): number | undefined {
   return t;
 }
 
+interface ProxyHealth {
+  build?: string;
+  pid?: number;
+  mode?: string;
+}
+
+async function probeProxy(url: string): Promise<ProxyHealth | undefined> {
+  try {
+    const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(700) });
+    if (!r.ok) return undefined;
+    const text = await r.text();
+    try {
+      return JSON.parse(text) as ProxyHealth;
+    } catch {
+      return {}; // a build from before the health endpoint returned JSON
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `switchyard claude`: make sure the proxy is up, then run Claude Code through it under the
+ * launch alias. The alias is a model name Claude Code doesn't know, so the environment also
+ * tells Claude Code the real context window and the features the ceiling model supports;
+ * otherwise it assumes 200K and warns on every start.
+ */
+async function launchClaude(cfg: RouterConfig, args: string[]): Promise<void> {
+  const url = `http://127.0.0.1:${cfg.port}`;
+  let health = await probeProxy(url);
+  if (!health) {
+    mkdirSync(cfg.dataDir, { recursive: true });
+    const logPath = join(cfg.dataDir, 'proxy.log');
+    const fd = openSync(logPath, 'a');
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'start'], { detached: true, stdio: ['ignore', fd, fd] });
+    child.unref();
+    for (let i = 0; i < 40 && !health; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      health = await probeProxy(url);
+    }
+    if (!health) throw new Error(`the proxy did not come up on ${url}; see ${logPath}`);
+    process.stderr.write(`switchyard: proxy started on ${url} (${cfg.mode} mode, log ${logPath})\n`);
+  } else if (health.build !== BUILD) {
+    process.stderr.write(
+      `switchyard: the proxy on ${url} is running an older build${health.pid ? ` (pid ${health.pid})` : ''}. ` +
+        `Stop it and run this again to use the new code.\n`,
+    );
+  }
+
+  const ceiling = resolveAlias(cfg, cfg.launchModel) ?? cfg.launchModel;
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: url,
+    // Claude Code can't know the alias's window; the ceiling model's is 1M.
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '1000000',
+    // Puts the alias in the /model picker under its own name, with effort and thinking enabled.
+    ANTHROPIC_CUSTOM_MODEL_OPTION: cfg.launchModel,
+    ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: cfg.launchModel,
+    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `Switchyard picks the model for each turn, up to ${displayName(ceiling)}`,
+    ANTHROPIC_CUSTOM_MODEL_OPTION_SUPPORTED_CAPABILITIES: 'effort,xhigh_effort,thinking,adaptive_thinking,interleaved_thinking',
+  };
+  const claudeArgs = args.includes('--model') ? args : ['--model', cfg.launchModel, ...args];
+  const claude = spawn('claude', claudeArgs, { stdio: 'inherit', env });
+  claude.on('error', (err: NodeJS.ErrnoException) => {
+    process.stderr.write(err.code === 'ENOENT' ? 'switchyard: `claude` is not on your PATH\n' : `switchyard: ${err.message}\n`);
+    process.exit(1);
+  });
+  claude.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   const { positional, flags } = parseArgs(rest);
 
   switch (cmd) {
+    case 'claude': {
+      await launchClaude(loadConfig(), rest);
+      return;
+    }
+
     case 'start':
     case 'proxy': {
       const cfg = loadConfig(overridesFrom(flags));
       const p = await startProxy({ cfg });
       process.stderr.write(
         `switchyard ${cfg.mode} on ${p.url} -> ${cfg.upstream} (preset ${cfg.preset}, TTL ${cfg.cacheTtlSeconds}s)\n` +
-          `  run:        ANTHROPIC_BASE_URL=${p.url} claude --model dynamic\n` +
+          `  run:        switchyard claude   (or ANTHROPIC_BASE_URL=${p.url} claude --model "${cfg.launchModel}")\n` +
           `  dashboard:  ${p.url}/switchyard\n`,
       );
       const stop = () => p.close().then(() => process.exit(0));

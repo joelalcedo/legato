@@ -8,6 +8,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `npm test` — node:test suites via tsx (73 tests)
 - `npm run typecheck`
 - `npm run demo` — replay the synthetic sample transcripts and write `examples/sample-report.html`
+- `node dist/cli.js claude` — start the proxy if needed and launch Claude Code through it as "Dynamic mode" (the user runs this; the auto-mode classifier in this repo's sessions blocks starting servers)
 - `node dist/cli.js explain "<prompt>" --context 150000` — inspect one decision
 - `node dist/cli.js analyze --since 30d` — replay real `~/.claude/projects` transcripts (about 20s for 30 days)
 
