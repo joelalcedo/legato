@@ -18,13 +18,115 @@ export interface DecisionLogEntry {
   baselineUsd: number;
   status: number;
   /** What went upstream: Claude Code's request byte for byte, or the routed rewrite. */
-  forwarded: 'original' | 'rewritten';
+  /** `aliased`: the bytes went as sent except for the model name, which was a launch alias. */
+  forwarded: 'original' | 'rewritten' | 'aliased';
+  alias?: string;
   /** Model the upstream request named. */
   ranOn: string;
   failOpen?: boolean;
   reasons: string[];
   notes: string[];
   userPreview?: string;
+  /** Claude Code's session id, shared by a session's main thread and its subagents. */
+  sessionId?: string;
+  agentType?: string;
+  /** Trial arm, when cfg.trial applied to this conversation. */
+  arm?: 'A' | 'B';
+  /** Which classifier produced the tier: the heuristic, or the model named in config. */
+  classifier?: string;
+  /** Wall time from the request arriving to the response finishing (or being abandoned). */
+  latencyMs?: number;
+}
+
+/** What the status line shows for one Claude Code session: its main thread's latest decision and running totals. */
+export interface SessionStatus {
+  sessionId: string;
+  at: string;
+  mode: 'live' | 'shadow';
+  incoming: string;
+  model: string;
+  effort?: string;
+  incomingEffort?: string;
+  /** The model name Claude Code was launched with when it is an alias such as `Dynamic mode`. */
+  alias?: string;
+  /** false: the last request was forwarded as sent (unknown model, routing off). */
+  through?: boolean;
+  /** HTTP status of the last request, so a failing session says so instead of showing stale numbers. */
+  lastStatus?: number;
+  switched: boolean;
+  /** The engine's first reason, which names a hold or a switch. */
+  reason: string;
+  turns: number;
+  requests: number;
+  costUsd: number;
+  baselineUsd: number;
+}
+
+export function displayName(model: string): string {
+  const m = /claude-(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d+))?/.exec(model);
+  if (!m) return model;
+  return `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}${m[3] ? '.' + m[3] : ''}`;
+}
+
+/**
+ * One line for Claude Code's status line, in words: what this session is running on, how that
+ * differs from what Claude Code asked for, and what it has saved so far.
+ *
+ *   ⇄ running on Sonnet 5.5 at medium effort instead of Opus 5.5 · saved $0.57 over 3 turns
+ *   ⇄ running on Opus 5.5 at medium effort (asked xhigh) · switch held: rebuild $0.97 · saved $0.31 over 7 turns
+ *   ⇄ dynamic: running on Haiku 5.5 at low effort · saved $0.70 over 1 turn
+ */
+export function formatStatus(s: SessionStatus): string {
+  if (s.lastStatus !== undefined && s.lastStatus >= 400 && s.lastStatus !== 499) {
+    const what = s.lastStatus === 404 ? `the API does not know the model "${s.incoming}"` : `HTTP ${s.lastStatus} from the API`;
+    const hint = s.through === false ? ` · ${s.reason}; if you just rebuilt legato, restart the proxy` : '';
+    return `⇄ legato: last request failed, ${what}${hint}`;
+  }
+  if (s.through === false) return `⇄ legato: forwarding "${s.incoming}" as sent (${s.reason})`;
+  const saved = s.baselineUsd - s.costUsd;
+  const shadow = s.mode === 'shadow';
+  let line = `⇄ ${s.alias ? s.alias + ': ' : ''}${shadow ? 'shadow: would run' : 'running'} on ${displayName(s.model)}`;
+  if (s.effort) line += ` at ${s.effort} effort`;
+  // With an alias the user delegated the choice, so there is nothing to compare against.
+  if (s.alias) {
+    // nothing
+  } else if (s.model !== s.incoming) line += ` instead of ${displayName(s.incoming)}`;
+  else if (s.effort && s.incomingEffort && s.effort !== s.incomingEffort) line += ` (asked ${s.incomingEffort})`;
+  else line += ', as asked';
+  if (s.reason.startsWith('hold ')) {
+    const rebuild = /rebuild \$([\d.]+)/.exec(s.reason);
+    const thinking = /drop ~(\d+K) tokens/.exec(s.reason);
+    line += thinking ? ` · switch held: ${thinking[1]} of thinking` : rebuild ? ` · switch held: rebuild $${Number(rebuild[1]).toFixed(2)}` : ' · switch held';
+  }
+  const turns = `${s.turns} turn${s.turns === 1 ? '' : 's'}`;
+  return `${line} · ${shadow ? 'would save' : 'saved'} $${saved.toFixed(2)} over ${turns}`;
+}
+
+const SESSION_ID_RE = /^[0-9A-Za-z_-]{1,80}$/;
+
+function statusPath(dir: string, sessionId: string): string | undefined {
+  return SESSION_ID_RE.test(sessionId) ? join(dir, 'status', sessionId + '.json') : undefined;
+}
+
+export function writeSessionStatus(dir: string, s: SessionStatus): void {
+  const p = statusPath(dir, s.sessionId);
+  if (!p) return;
+  try {
+    mkdirSync(join(dir, 'status'), { recursive: true });
+    writeFileSync(p, JSON.stringify(s));
+  } catch {
+    /* the status line is best-effort */
+  }
+}
+
+export function readSessionStatus(dir: string, sessionId: string): SessionStatus | undefined {
+  const p = statusPath(dir, sessionId);
+  if (!p || !existsSync(p)) return undefined;
+  try {
+    return JSON.parse(readFileSync(p, 'utf8')) as SessionStatus;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Stats {
@@ -66,7 +168,7 @@ export class StatsStore {
   private logPath: string;
   private pending = false;
 
-  constructor(private dir: string, private persist = true) {
+  constructor(dir: string, private persist = true) {
     this.statsPath = join(dir, 'stats.json');
     this.logPath = join(dir, 'decisions.jsonl');
     this.stats = emptyStats();

@@ -1,7 +1,8 @@
 import { classify, type Classification } from './classifier.js';
 import type { RouterConfig } from './config.js';
 import type { Features, MessagesRequest } from './features.js';
-import { clampEffort, tierOf, tierRank, TIER_ORDER, type Effort, type Tier } from './models.js';
+import { shareOf } from './hash.js';
+import { clampEffort, EFFORT_ORDER, effortRank, tierOf, tierRank, TIER_ORDER, type Effort, type Tier } from './models.js';
 import { priceFor, type Price } from './pricing.js';
 
 /** What the router remembers about one conversation (main session or a single subagent). */
@@ -51,6 +52,8 @@ export interface Decision {
   classification?: Classification;
   economics?: Economics;
   freeSwitch?: boolean;
+  /** Which arm of cfg.trial this conversation landed in, when the trial applied. */
+  arm?: 'A' | 'B';
 }
 
 export interface DecideInput {
@@ -61,6 +64,8 @@ export interface DecideInput {
   now: number;
   /** Exact prompt size when known (analyzer); the proxy estimates it from the previous request. */
   contextTokens?: number;
+  /** A classification made elsewhere (the proxy's model-based classifier); the heuristic runs otherwise. */
+  classification?: Classification;
 }
 
 function maxTier(a: Tier, b: Tier): Tier {
@@ -146,7 +151,8 @@ export function estimateContext(state: ConversationState, features: Features): n
   return features.estimatedTokens;
 }
 
-export function decide({ req, features, state, cfg, now, contextTokens }: DecideInput): Decision {
+export function decide({ req, features, state, cfg, now, contextTokens, classification: given }: DecideInput): Decision {
+  if (cfg.detectCacheTtl && features.cacheTtlSeconds) cfg = { ...cfg, cacheTtlSeconds: features.cacheTtlSeconds };
   const incomingModel = req.model;
   const incomingTier = tierOf(incomingModel);
   const reasons: string[] = [];
@@ -173,7 +179,11 @@ export function decide({ req, features, state, cfg, now, contextTokens }: Decide
       model: currentModel,
       tier: currentTier,
       switched: false,
-      reasons: [`tool loop step ${features.toolLoopDepth}: hold ${currentModel}`],
+      reasons: [
+        features.machineTurn
+          ? `Claude Code's own prompt (suggestion, recap or compaction), not a user turn: hold ${currentModel}`
+          : `tool loop step ${features.toolLoopDepth}: hold ${currentModel}`,
+      ],
     };
   }
 
@@ -182,14 +192,36 @@ export function decide({ req, features, state, cfg, now, contextTokens }: Decide
   let effort: Effort | undefined;
   let classification: Classification | undefined;
   let strongUpgrade = false;
+  let arm: Decision['arm'];
+  let trialModel: string | undefined;
+  // A subagent's first request is free to route, and its type says more than its brief does.
+  const agentTier = features.isFirstRequest && features.agentType ? cfg.subagentTiers[features.agentType] : undefined;
+  const trial = cfg.trial && features.isFirstRequest && features.agentType === cfg.trial.agentType ? cfg.trial : undefined;
 
   if (features.override) {
     target = clampTier(features.override, allowed);
     effort = cfg.tierEffort[target];
     reasons.push(`override //${features.override[0]} -> ${target}`);
     strongUpgrade = true;
+  } else if (trial) {
+    // The arm is a function of the brief, so the analyzer replays each agent into the same arm.
+    arm = shareOf(features.userText) < trial.share ? 'B' : 'A';
+    if (arm === 'B') {
+      target = tierOf(trial.model) ?? incomingTier;
+      trialModel = trial.model;
+      effort = trial.effort ?? cfg.tierEffort[target];
+      reasons.push(`trial arm B: ${features.agentType} agent -> ${trial.model}/${effort} (${Math.round(trial.share * 100)}% of them)`);
+    } else {
+      target = incomingTier;
+      reasons.push(`trial arm A: ${features.agentType} agent stays on ${incomingModel} (control)`);
+      strongUpgrade = true;
+    }
+  } else if (agentTier) {
+    target = agentTier;
+    effort = cfg.tierEffort[agentTier];
+    reasons.push(`${features.agentType} agent -> ${agentTier} by agent type`);
   } else {
-    classification = classify(features.userText);
+    classification = given ?? classify(features.userText);
     target = classification.tier;
     effort = classification.effort;
     reasons.push(
@@ -204,7 +236,7 @@ export function decide({ req, features, state, cfg, now, contextTokens }: Decide
     if (features.previousTaskErrors >= cfg.escalateAfterErrors) {
       const bumped = stepUp(maxTier(target, currentTier), allowed);
       if (bumped !== target) {
-        reasons.push(`escalate: ${features.previousTaskErrors} failing tool results in the previous task -> ${bumped}`);
+        reasons.push(`escalate: the previous task ended on ${features.previousTaskErrors} failing tool results -> ${bumped}`);
         target = bumped;
         strongUpgrade = true;
       }
@@ -216,12 +248,32 @@ export function decide({ req, features, state, cfg, now, contextTokens }: Decide
   if (clamped !== target) reasons.push(`clamped ${target} -> ${clamped} (floor ${cfg.floor}, ceiling ${cfg.ceiling})`);
   target = clamped;
 
-  let model = modelForTier(target, incomingModel, incomingTier, cfg);
+  let model = trialModel && tierOf(trialModel) === target ? trialModel : modelForTier(target, incomingModel, incomingTier, cfg);
   let switched = model !== currentModel;
   let economics: Economics | undefined;
   let freeSwitch: boolean | undefined;
 
-  if (switched && (state.model || !features.isFirstRequest)) {
+  if (switched && features.isFork) {
+    reasons.push(`fork: holds ${currentModel}, whose ${Math.round(ctx / 1000)}K-token context and thinking it inherits from the parent`);
+    model = currentModel;
+    target = currentTier;
+    switched = false;
+  }
+
+  // Thinking blocks are readable only by the model that wrote them (or a stronger one), so a
+  // downshift mid-session discards the current model's reasoning even when the cache is cold.
+  const downshift = switched && tierRank(target) < tierRank(currentTier);
+  const thinkingTokens = downshift && !features.isFirstRequest ? Math.round(features.thinkingChars / 3.5) : 0;
+  if (thinkingTokens > cfg.holdThinkingTokens) {
+    economics = switchEconomics(currentModel, model, state, ctx, cfg, now);
+    reasons.push(
+      `hold ${currentModel}: switching would drop ~${Math.round(thinkingTokens / 1000)}K tokens of its thinking, ` +
+        `which ${model} can't read - adjusting effort instead`,
+    );
+    model = currentModel;
+    target = currentTier;
+    switched = false;
+  } else if (switched && (state.model || !features.isFirstRequest)) {
     // With no history for this conversation (router started mid-session), assume the
     // incoming model's cache is warm: that is the expensive case to get wrong.
     const warm = state.model ? cacheIsWarm(state.modelCache[currentModel], now, cfg) : true;
@@ -266,6 +318,18 @@ export function decide({ req, features, state, cfg, now, contextTokens }: Decide
     reasons.push('free switch: no cache yet for this conversation');
   }
 
+  // The user's effort is a ceiling, like the model: hard turns run at it, others may go lower.
+  const ceiling = features.incomingEffort as Effort | undefined;
+  if (effort && ceiling && EFFORT_ORDER.includes(ceiling)) {
+    if (strongUpgrade || classification?.tier === 'opus') {
+      if (effort !== ceiling) reasons.push(`effort ${effort} -> ${ceiling}: hard turn keeps the requested effort`);
+      effort = ceiling;
+    } else if (effortRank(effort) > effortRank(ceiling)) {
+      reasons.push(`effort ${effort} -> ${ceiling}: never above the requested effort`);
+      effort = ceiling;
+    }
+  }
+
   if (!cfg.routeEffort) {
     effort = undefined;
   } else if (effort) {
@@ -274,7 +338,7 @@ export function decide({ req, features, state, cfg, now, contextTokens }: Decide
     effort = c;
   }
 
-  return { route: true, model, tier: target, effort, switched, reasons, classification, economics, freeSwitch };
+  return { route: true, model, tier: target, effort, switched, reasons, classification, economics, freeSwitch, arm };
 }
 
 /** Fold a completed request's measured usage back into the conversation state. */

@@ -25,11 +25,13 @@ interface Rule {
 
 const HARD: Rule[] = [
   { re: /\b(architect(ure)?|system design|design (a|the|an)\b|trade-?offs?)\b/i, weight: 3, label: 'design' },
-  { re: /\b(root cause|investigate|(figure|find) out (why|what)|why (does|is|do|are|did)|diagnos)/i, weight: 3, label: 'diagnosis' },
+  { re: /\b(root cause|investigate|(figure|find) out (why|what)|why (does|is|do|are|did|would)|how come|diagnos)/i, weight: 3, label: 'diagnosis' },
   { re: /\b(race condition|deadlock|memory leak|heisenbug|flaky|intermittent|non-?deterministic)\b/i, weight: 3, label: 'hard-bug' },
-  { re: /\b(security|vulnerab|exploit|threat model|auth(entication|orization)? flow|cve)\b/i, weight: 3, label: 'security' },
+  // "security master" is reference data in finance, not infosec.
+  { re: /\b(security(?! master)|vulnerab|exploit|threat model|auth(entication|orization)? flow|cve)\b/i, weight: 3, label: 'security' },
   { re: /\b(migrat(e|ion)|re-?architect|rewrite|overhaul|large refactor|refactor (the|our|this) (whole|entire))\b/i, weight: 3, label: 'large-change' },
-  { re: /\b(performance|latency|throughput|optimi[sz]e|profil(e|ing)|bottleneck)\b/i, weight: 2, label: 'performance' },
+  // "profile" alone is usually a user-profile screen; profiling and profilers are performance work.
+  { re: /\b(performance|latency|throughput|optimi[sz]e|profil(ing|er)|bottleneck)\b/i, weight: 2, label: 'performance' },
   { re: /\b(concurren|distributed|consisten(cy|t)|transaction|idempoten)/i, weight: 2, label: 'systems' },
   { re: /\b(plan|proposal|spec|rfc|strategy|approach)\b/i, weight: 1, label: 'planning' },
   { re: /\b(ultrathink|think (hard|harder|deeply|carefully)|be thorough|carefully)\b/i, weight: 3, label: 'asked-for-depth' },
@@ -100,4 +102,66 @@ export function classify(text: string): Classification {
     effort = hard >= 2 ? 'high' : easy >= 2 ? 'low' : 'medium';
   }
   return { tier, effort, hard, easy, signals };
+}
+
+export interface ModelClassifierOptions {
+  apiKey: string;
+  model: string;
+  upstream: string;
+  timeoutMs: number;
+}
+
+const MODEL_SYSTEM = `You route one request made inside a coding agent to a model tier. Reply with one line of JSON only:
+{"tier":"haiku|sonnet|opus","effort":"low|medium|high|xhigh","why":"<under 10 words>"}
+haiku: mechanical edits, lookups, git, acknowledgements. sonnet: ordinary feature work, confirmations of a plan, moderate edits. opus: root-cause debugging, architecture, concurrency, security, large refactors, anything asking for deep thought.`;
+const MODEL_TIERS = ['haiku', 'sonnet', 'opus'];
+const MODEL_EFFORTS = ['low', 'medium', 'high', 'xhigh'];
+const verdicts = new Map<string, Classification>();
+
+/**
+ * Classify with a small model. Returns undefined on timeout, error or an unusable reply so
+ * the caller falls back to the heuristic. Verdicts are cached by text, so the tool-loop steps
+ * of a turn cost nothing.
+ */
+export async function classifyWithModel(text: string, opts: ModelClassifierOptions): Promise<Classification | undefined> {
+  const key = text.slice(0, 4000);
+  const hit = verdicts.get(key);
+  if (hit) return hit;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs);
+  try {
+    const r = await fetch(`${opts.upstream}/v1/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': opts.apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: opts.model,
+        max_tokens: 80,
+        thinking: { type: 'disabled' },
+        system: MODEL_SYSTEM,
+        messages: [{ role: 'user', content: key }],
+      }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) return undefined;
+    const j = (await r.json()) as { content?: { type: string; text?: string }[] };
+    const out = j.content?.find((b) => b.type === 'text')?.text ?? '';
+    const m = /\{[\s\S]*\}/.exec(out);
+    if (!m) return undefined;
+    const v = JSON.parse(m[0]) as { tier?: string; effort?: string; why?: string };
+    if (!MODEL_TIERS.includes(v.tier ?? '') || !MODEL_EFFORTS.includes(v.effort ?? '')) return undefined;
+    const c: Classification = {
+      tier: v.tier as Tier,
+      effort: v.effort as Effort,
+      hard: 0,
+      easy: 0,
+      signals: [`${opts.model}: ${v.why ?? ''}`.trim()],
+    };
+    if (verdicts.size >= 500) verdicts.delete(verdicts.keys().next().value!);
+    verdicts.set(key, c);
+    return c;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
 }

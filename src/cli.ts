@@ -1,35 +1,53 @@
 #!/usr/bin/env node
-import { writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { htmlReport, textReport } from './analyzer/report.js';
 import { replay } from './analyzer/replay.js';
 import { loadConversations } from './analyzer/transcripts.js';
-import { loadConfig, type Mode, type Preset, type RouterConfig } from './config.js';
+import { loadConfig, resolveAlias, type Mode, type Preset, type RouterConfig } from './config.js';
 import { decide, newState } from './engine.js';
 import { extractFeatures, type MessagesRequest } from './features.js';
 import { usd } from './html.js';
-import { startProxy } from './proxy.js';
-import { readStats } from './stats.js';
+import type { Effort } from './models.js';
+import { BUILD, startProxy } from './proxy.js';
+import { displayName, formatStatus, readSessionStatus, readStats } from './stats.js';
 
-const HELP = `switchyard: cache-aware model routing for Claude Code
+const HELP = `legato: cache-aware model routing for Claude Code
 
 Usage
-  switchyard start [--port 8787] [--mode live|shadow] [--preset balanced] [--ttl 300]
-      Run the routing proxy. Then, in another terminal:
-        ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model opus
-      Dashboard: http://127.0.0.1:8787/switchyard
+  legato [any claude arguments]
+      Run Claude Code through the router. Starts the proxy if it isn't running, adds a status
+      line to ~/.claude/settings.json on first use, then launches claude as "Dynamic mode": the
+      header says so, the status line says which model and effort each turn actually ran on.
+      Arguments go to claude unchanged (e.g. legato --resume). "legato claude" is the same.
 
-  switchyard analyze [--dir ~/.claude/projects] [--since 30d] [--preset balanced]
+  legato start [--port 8787] [--mode live|shadow] [--preset balanced] [--ttl 300]
+                   [--classifier heuristic|haiku] [--trial <agentType>=<model>[/<effort>][:<share%>]]
+      Run the proxy by itself (shadow mode decides and logs but forwards every request as
+      sent). Then, in another terminal, "legato claude", or by hand:
+        ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model "Dynamic mode"
+      "Dynamic mode" is an alias the proxy resolves (modelAliases in config.json; default:
+      route up to Opus 5.5). A real model name works too and becomes the ceiling.
+      Dashboard: http://127.0.0.1:8787/legato
+      --classifier haiku asks Haiku 5.5 to classify each user turn (needs ANTHROPIC_API_KEY).
+      --trial general-purpose=claude-sonnet-5-5/high:50 routes half of those subagents to
+      Sonnet and logs the arm, so the two halves can be compared.
+
+  legato analyze [--dir ~/.claude/projects] [--since 30d] [--preset balanced]
                      [--ttl 300] [--html report.html] [--json] [--keep-models]
       Replay your Claude Code transcripts through the router and report what it
       would have cost, with cache rebuilds priced in.
 
-  switchyard explain "<prompt>" [--context 120000] [--current claude-opus-5-5] [--idle 30]
+  legato explain "<prompt>" [--context 120000] [--current claude-opus-5-5] [--idle 30]
       Show the decision the engine makes for one user turn.
 
-  switchyard stats        Print totals from the running or last proxy session.
-  switchyard statusline   One-line status for Claude Code's statusLine setting.
+  legato stats        Print totals from the running or last proxy session.
+  legato statusline   One line for Claude Code's statusLine setting: the model and effort this
+                          session is running on, and what the routing has saved. Add to settings.json:
+                          "statusLine": {"type": "command", "command": "legato statusline"}
 
 Presets: conservative (never below Sonnet), balanced (default), aggressive.
 Per-turn override: start a prompt with //h, //s, //o or //f to force Haiku, Sonnet, Opus or Fable.
@@ -63,12 +81,33 @@ function overridesFrom(flags: Record<string, string | boolean>): Partial<RouterC
   if (str(flags.mode)) o.mode = str(flags.mode) as Mode;
   if (str(flags.port)) o.port = Number(flags.port);
   if (str(flags.host)) o.host = str(flags.host)!;
-  if (str(flags.ttl)) o.cacheTtlSeconds = Number(flags.ttl);
+  if (str(flags.ttl)) {
+    o.cacheTtlSeconds = Number(flags.ttl);
+    o.detectCacheTtl = false;
+  }
   if (str(flags.upstream)) o.upstream = str(flags.upstream)!;
   if (str(flags['data-dir'])) o.dataDir = resolve(str(flags['data-dir'])!);
   if (flags['no-effort']) o.routeEffort = false;
   if (flags.fable) o.enabledTiers = ['haiku', 'sonnet', 'opus', 'fable'];
+  if (str(flags.classifier)) o.classifier = str(flags.classifier) as RouterConfig['classifier'];
+  if (str(flags.trial)) o.trial = parseTrial(str(flags.trial)!);
   return o;
+}
+
+/** general-purpose=claude-sonnet-5-5/high:50 -> route half of those agents to Sonnet at high effort. */
+function parseTrial(v: string): RouterConfig['trial'] {
+  const m = /^([^=]+)=([^/:]+)(?:\/([a-z]+))?(?::(\d+))?$/.exec(v);
+  if (!m) throw new Error(`--trial expects <agentType>=<model>[/<effort>][:<share%>], got ${v}`);
+  return { agentType: m[1]!, model: m[2]!, effort: m[3] as Effort | undefined, share: m[4] ? Number(m[4]) / 100 : 0.5 };
+}
+
+function readStdinJson(): Record<string, unknown> {
+  if (process.stdin.isTTY) return {};
+  try {
+    return JSON.parse(readFileSync(0, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 function parseSince(v: string | undefined): number | undefined {
@@ -80,19 +119,137 @@ function parseSince(v: string | undefined): number | undefined {
   return t;
 }
 
+interface ProxyHealth {
+  build?: string;
+  pid?: number;
+  mode?: string;
+}
+
+async function probeProxy(url: string): Promise<ProxyHealth | undefined> {
+  try {
+    const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(700) });
+    if (!r.ok) return undefined;
+    const text = await r.text();
+    try {
+      return JSON.parse(text) as ProxyHealth;
+    } catch {
+      return {}; // a build from before the health endpoint returned JSON
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * First run: give Claude Code a status line that shows the routed model, unless the user has
+ * one already. Returns a note for the terminal when something was changed.
+ */
+function ensureStatusLine(): string | undefined {
+  const settingsPath = join(homedir(), '.claude', 'settings.json');
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return `could not read ${settingsPath}; add the status line by hand (see --help)`;
+  }
+  const command = `node ${JSON.stringify(fileURLToPath(import.meta.url))} statusline`;
+  const current = settings.statusLine as { command?: unknown } | undefined;
+  let repaired = false;
+  if (current !== undefined) {
+    // Someone else's status line is left alone. Ours from another install location (the repo
+    // was moved or renamed) is pointed at this one.
+    const ours = typeof current.command === 'string' && /dist\/cli\.js"? statusline$/.test(current.command);
+    if (!ours || current.command === command) return undefined;
+    repaired = true;
+  }
+  settings.statusLine = { type: 'command', command };
+  try {
+    mkdirSync(join(homedir(), '.claude'), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+    return repaired
+      ? `pointed the status line in ${settingsPath} at this install`
+      : `added a status line to ${settingsPath} so Claude Code shows the model each turn runs on (remove "statusLine" to undo)`;
+  } catch {
+    return `could not write ${settingsPath}; add the status line by hand (see --help)`;
+  }
+}
+
+/**
+ * `legato` with no command: make sure the proxy is up, then run Claude Code through it
+ * under the launch alias. The alias is a model name Claude Code doesn't know, so the environment also
+ * tells Claude Code the real context window and the features the ceiling model supports;
+ * otherwise it assumes 200K and warns on every start.
+ */
+async function launchClaude(cfg: RouterConfig, args: string[]): Promise<void> {
+  const url = `http://127.0.0.1:${cfg.port}`;
+  let health = await probeProxy(url);
+  if (!health) {
+    mkdirSync(cfg.dataDir, { recursive: true });
+    const logPath = join(cfg.dataDir, 'proxy.log');
+    const fd = openSync(logPath, 'a');
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'start'], { detached: true, stdio: ['ignore', fd, fd] });
+    child.unref();
+    for (let i = 0; i < 40 && !health; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      health = await probeProxy(url);
+    }
+    if (!health) throw new Error(`the proxy did not come up on ${url}; see ${logPath}`);
+    process.stderr.write(`legato: proxy started on ${url} (${cfg.mode} mode, log ${logPath})\n`);
+  } else if (health.build !== BUILD) {
+    process.stderr.write(
+      `legato: the proxy on ${url} is running an older build${health.pid ? ` (pid ${health.pid})` : ''}. ` +
+        `Stop it and run this again to use the new code.\n`,
+    );
+  }
+
+  const note = ensureStatusLine();
+  if (note) process.stderr.write(`legato: ${note}\n`);
+
+  const ceiling = resolveAlias(cfg, cfg.launchModel) ?? cfg.launchModel;
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: url,
+    // Claude Code can't know the alias's window; the ceiling model's is 1M.
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS: process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS ?? '1000000',
+    // Puts the alias in the /model picker under its own name, with effort and thinking enabled.
+    ANTHROPIC_CUSTOM_MODEL_OPTION: cfg.launchModel,
+    ANTHROPIC_CUSTOM_MODEL_OPTION_NAME: cfg.launchModel,
+    ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION: `Legato picks the model for each turn, up to ${displayName(ceiling)}`,
+    ANTHROPIC_CUSTOM_MODEL_OPTION_SUPPORTED_CAPABILITIES: 'effort,xhigh_effort,thinking,adaptive_thinking,interleaved_thinking',
+  };
+  const claudeArgs = args.includes('--model') ? args : ['--model', cfg.launchModel, ...args];
+  const claude = spawn('claude', claudeArgs, { stdio: 'inherit', env });
+  claude.on('error', (err: NodeJS.ErrnoException) => {
+    process.stderr.write(err.code === 'ENOENT' ? 'legato: `claude` is not on your PATH\n' : `legato: ${err.message}\n`);
+    process.exit(1);
+  });
+  claude.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+}
+
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   const { positional, flags } = parseArgs(rest);
 
+  // No command, or only claude flags such as --resume: run Claude Code through the router.
+  if (cmd === undefined || (cmd.startsWith('-') && !['--help', '-h'].includes(cmd))) {
+    await launchClaude(loadConfig(), process.argv.slice(2));
+    return;
+  }
+
   switch (cmd) {
+    case 'claude': {
+      await launchClaude(loadConfig(), rest);
+      return;
+    }
+
     case 'start':
     case 'proxy': {
       const cfg = loadConfig(overridesFrom(flags));
       const p = await startProxy({ cfg });
       process.stderr.write(
-        `switchyard ${cfg.mode} on ${p.url} -> ${cfg.upstream} (preset ${cfg.preset}, TTL ${cfg.cacheTtlSeconds}s)\n` +
-          `  run:        ANTHROPIC_BASE_URL=${p.url} claude --model opus\n` +
-          `  dashboard:  ${p.url}/switchyard\n`,
+        `legato ${cfg.mode} on ${p.url} -> ${cfg.upstream} (preset ${cfg.preset}, TTL ${cfg.cacheTtlSeconds}s)\n` +
+          `  run:        legato claude   (or ANTHROPIC_BASE_URL=${p.url} claude --model "${cfg.launchModel}")\n` +
+          `  dashboard:  ${p.url}/legato\n`,
       );
       const stop = () => p.close().then(() => process.exit(0));
       process.on('SIGINT', stop);
@@ -122,7 +279,9 @@ async function main(): Promise<void> {
       const html = str(flags.html);
       if (html) {
         const synthetic = /sample-transcripts/.test(dir);
-        writeFileSync(html, htmlReport(result, cfg, dir, synthetic));
+        // Reports get shared; name the source the way it was given, not by its absolute path.
+        const shown = str(flags.dir) ?? dir.replace(homedir(), '~');
+        writeFileSync(html, htmlReport(result, cfg, shown, synthetic));
         process.stderr.write(`Report written to ${resolve(html)}\n`);
       }
       return;
@@ -131,7 +290,7 @@ async function main(): Promise<void> {
     case 'explain': {
       const cfg = loadConfig(overridesFrom(flags));
       const prompt = positional.join(' ');
-      if (!prompt) throw new Error('explain needs a prompt, e.g. switchyard explain "rename foo to bar"');
+      if (!prompt) throw new Error('explain needs a prompt, e.g. legato explain "rename foo to bar"');
       const current = str(flags.current) ?? cfg.tiers.opus;
       const ctx = Number(str(flags.context) ?? 60_000);
       const idle = Number(str(flags.idle) ?? 30);
@@ -184,18 +343,30 @@ async function main(): Promise<void> {
 
     case 'statusline': {
       const cfg = loadConfig(overridesFrom(flags));
+      // Claude Code pipes its session JSON in; the proxy writes one status file per session id.
+      const input = readStdinJson();
+      const sessionId = typeof input.session_id === 'string' ? input.session_id : undefined;
+      const status = sessionId ? readSessionStatus(cfg.dataDir, sessionId) : undefined;
+      if (status) {
+        process.stdout.write(formatStatus(status) + '\n');
+        return;
+      }
+      // A session the proxy has never seen must not borrow other sessions' numbers.
+      if (sessionId) {
+        process.stdout.write('⇄ legato: this session is not going through the proxy\n');
+        return;
+      }
       const s = readStats(cfg.dataDir);
       if (!s || !s.last) {
-        process.stdout.write('⇄ switchyard idle\n');
+        process.stdout.write('⇄ legato idle\n');
         return;
       }
       const saved = s.baselineUsd - s.costUsd;
       const share = s.baselineUsd > 0 ? ` (${((saved / s.baselineUsd) * 100).toFixed(0)}%)` : '';
-      process.stdout.write(`⇄ ${s.last.routed.replace(/^claude-/, '')}${s.last.effort ? '·' + s.last.effort : ''} · saved ${usd(saved)}${share}\n`);
+      process.stdout.write(`⇄ all sessions: last ${displayName(s.last.routed)}${s.last.effort ? ' · ' + s.last.effort : ''} · saved ${usd(saved)}${share}\n`);
       return;
     }
 
-    case undefined:
     case 'help':
     case '--help':
     case '-h':
@@ -209,6 +380,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  process.stderr.write(`switchyard: ${(err as Error).message}\n`);
+  process.stderr.write(`legato: ${(err as Error).message}\n`);
   process.exitCode = 1;
 });

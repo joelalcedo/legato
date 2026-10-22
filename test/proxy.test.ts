@@ -1,14 +1,30 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { defaultConfig, type RouterConfig } from '../src/config.js';
 import type { Decision } from '../src/engine.js';
 import { extractFeatures, type Message, type MessagesRequest } from '../src/features.js';
 import { PER_MESSAGE_EFFORT_BETA } from '../src/models.js';
 import { startProxy, type RunningProxy } from '../src/proxy.js';
-import { injectLedger, messageHash, rewriteRequest, type LedgerEntry } from '../src/rewrite.js';
+import { controlMessageIndex, rewriteRequest } from '../src/rewrite.js';
+import { conversationKey, sessionIdOf } from '../src/sessions.js';
+import { readSessionStatus } from '../src/stats.js';
 
 const user = (text: string): Message => ({ role: 'user', content: [{ type: 'text', text }] });
+/** Claude Code's per-turn control message: the request's tail, carrying the environment block and the effort. */
+const control = (effort: string): Message => ({
+  role: 'system',
+  content: [{ type: 'text', text: '# Environment\n - Primary working directory: /tmp/p', cache_control: { type: 'ephemeral', ttl: '1h' } }],
+  output_config: { effort },
+});
+const toolUse: Message = { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'a' } }] };
+const toolResult: Message = { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'src/a.ts:1' }] };
+const MAIN_SYSTEM = "You are Claude Code, Anthropic's official CLI for Claude.";
+const SESSION = '2b83602b-b1e1-4964-a8cd-38a7814fbc62';
+const userId = JSON.stringify({ device_id: 'd', account_uuid: 'a', session_id: SESSION });
 
 describe('rewrite', () => {
   const cfg = defaultConfig();
@@ -16,43 +32,79 @@ describe('rewrite', () => {
     model: 'claude-opus-5-5',
     tools: [{}],
     max_tokens: 128000,
-    thinking: { type: 'disabled' },
-    messages: [user('earlier'), { role: 'assistant', content: 'ok' }, user('//h thanks')],
+    output_config: { effort: 'xhigh' },
+    messages: [user('earlier'), { role: 'assistant', content: 'ok' }, user('//h thanks'), control('xhigh')],
   };
   const decision: Decision = { route: true, model: 'claude-haiku-5-5', effort: 'low', switched: true, reasons: [] };
 
-  it('sets the model, clamps max_tokens, strips the override and adds an effort message', () => {
-    const f = extractFeatures(base);
-    const rw = rewriteRequest(base, decision, f, [], cfg);
+  it("sets the model, strips the override and rewrites the effort in Claude Code's control message", () => {
+    const rw = rewriteRequest(base, decision, extractFeatures(base), undefined, cfg);
     assert.equal(rw.body.model, 'claude-haiku-5-5');
-    assert.equal(rw.body.max_tokens, 64000);
-    // Haiku 5.5 with thinking disabled can't change effort per message, so none is injected.
+    // Claude Code's own per-turn-control beta covers a rewritten value: no header is added.
     assert.equal(rw.betas.length, 0);
+    const msgs = rw.body.messages;
+    assert.equal(msgs.length, 4);
+    assert.equal((msgs[2]!.content as any)[0].text, 'thanks');
+    assert.deepEqual(msgs[3]!.output_config, { effort: 'low' });
+    assert.deepEqual((msgs[3]!.content as any)[0].cache_control, { type: 'ephemeral', ttl: '1h' });
+    assert.equal(rw.effort, 'low');
+    assert.equal(rw.effortChanged, true);
+    assert.equal(rw.modified, true);
+  });
+
+  it('appends an effort-only message, under the beta, when the client sends no control message', () => {
+    const req = { ...base, messages: base.messages.slice(0, 3) };
+    const rw = rewriteRequest(req, { ...decision, model: 'claude-sonnet-5-5', effort: 'medium' }, extractFeatures(req), undefined, cfg);
+    assert.ok(rw.betas.includes(PER_MESSAGE_EFFORT_BETA));
     const last = rw.body.messages[rw.body.messages.length - 1]!;
-    assert.equal((last.content as any)[0].text, 'thanks');
+    assert.equal(last.role, 'system');
+    assert.deepEqual(last.output_config, { effort: 'medium' });
+    assert.equal(controlMessageIndex(rw.body.messages), rw.body.messages.length - 1);
+  });
+
+  it("keeps the turn's effort through its tool loop without touching the history", () => {
+    const loop: MessagesRequest = { ...base, messages: [user('rename a to b'), toolUse, toolResult, control('xhigh')] };
+    const hold: Decision = { route: true, model: 'claude-opus-5-5', switched: false, reasons: [] };
+    const rw = rewriteRequest(loop, hold, extractFeatures(loop), 'low', cfg);
+    assert.deepEqual(rw.body.messages.slice(0, 3), loop.messages.slice(0, 3));
+    assert.deepEqual(rw.body.messages[3]!.output_config, { effort: 'low' });
+    assert.equal(rw.effortChanged, false);
+  });
+
+  it('leaves a request alone when the engine agrees with the effort Claude Code asked for', () => {
+    const rw = rewriteRequest(base, { ...decision, model: 'claude-opus-5-5', effort: 'xhigh', switched: false }, extractFeatures(base), undefined, cfg);
+    assert.equal(rw.effort, 'xhigh');
+    assert.deepEqual(rw.body.messages[3], base.messages[3]);
   });
 
   it('drops thinking:disabled for always-thinking models', () => {
-    const rw = rewriteRequest(base, { ...decision, model: 'claude-sonnet-5-5', effort: 'medium' }, extractFeatures(base), [], cfg);
+    const req = { ...base, thinking: { type: 'disabled' } };
+    const rw = rewriteRequest(req, { ...decision, model: 'claude-sonnet-5-5', effort: 'medium' }, extractFeatures(req), undefined, cfg);
     assert.equal(rw.body.thinking, undefined);
-    assert.ok(rw.betas.includes(PER_MESSAGE_EFFORT_BETA));
-    const sys = rw.body.messages.find((m) => m.role === 'system')!;
-    assert.deepEqual(sys.output_config, { effort: 'medium' });
+    assert.deepEqual(rw.body.messages[3]!.output_config, { effort: 'medium' });
   });
 
-  it('re-injects ledger entries at the same place so the prefix stays identical', () => {
-    const msgs: Message[] = [user('a'), { role: 'assistant', content: 'b' }, user('c')];
-    const ledger: LedgerEntry[] = [{ index: 2, hash: messageHash(msgs[2]!), effort: 'low' }];
-    const first = injectLedger(msgs, ledger);
-    const later = injectLedger([...msgs, { role: 'assistant', content: 'd' }, user('e')], ledger);
-    assert.deepEqual(later.slice(0, first.length), first);
+  it('does not change effort on Haiku 5.5 with thinking disabled, which rejects it', () => {
+    const req = { ...base, thinking: { type: 'disabled' } };
+    const rw = rewriteRequest(req, decision, extractFeatures(req), undefined, cfg);
+    assert.deepEqual(rw.body.messages[3]!.output_config, { effort: 'xhigh' });
+    assert.equal(rw.betas.length, 0);
+  });
+});
+
+describe('sessions', () => {
+  it('reads the session id out of metadata.user_id', () => {
+    assert.equal(sessionIdOf({ model: 'm', messages: [], metadata: { user_id: userId } }), SESSION);
+    assert.equal(sessionIdOf({ model: 'm', messages: [], metadata: { user_id: `user_x_account_y_session_${SESSION}` } }), SESSION);
+    assert.equal(sessionIdOf({ model: 'm', messages: [] }), undefined);
   });
 
-  it('drops ledger entries whose anchor changed (compaction)', () => {
-    const msgs: Message[] = [user('summary of earlier work'), { role: 'assistant', content: 'ok' }, user('next')];
-    const stale: LedgerEntry[] = [{ index: 2, hash: 'deadbeefdeadbeef', effort: 'low' }];
-    const rw = rewriteRequest({ ...base, thinking: undefined, messages: msgs }, { ...decision, model: 'claude-opus-5-5', effort: undefined }, extractFeatures({ ...base, messages: msgs }), stale, cfg);
-    assert.equal(rw.ledger.length, 0);
+  it('gives a fork its own key although it re-sends the parent history', () => {
+    const parent: MessagesRequest = { model: 'm', messages: [user('build it'), toolUse, toolResult], metadata: { user_id: userId }, system: MAIN_SYSTEM };
+    const fork: MessagesRequest = { ...parent, messages: [...parent.messages, user('name the app'), user('<fork-boilerplate>You are a worker fork.</fork-boilerplate>')] };
+    const parentLater: MessagesRequest = { ...parent, messages: [...parent.messages, { role: 'assistant', content: 'done' }, user('next')] };
+    assert.notEqual(conversationKey(fork), conversationKey(parent));
+    assert.equal(conversationKey(parentLater), conversationKey(parent));
   });
 });
 
@@ -113,50 +165,59 @@ describe('proxy end to end', () => {
     await new Promise<void>((r) => upstream.close(() => r()));
   });
 
-  async function start(patch: Partial<RouterConfig> = {}) {
+  async function start(patch: Partial<RouterConfig> = {}, persist = false) {
     if (proxy) await proxy.close();
     const cfg = { ...defaultConfig(), upstream: upstreamUrl, port: 0, ...patch };
-    proxy = await startProxy({ cfg, persist: false, log: () => {} });
+    proxy = await startProxy({ cfg, persist, log: () => {} });
     seen.length = 0;
   }
 
-  async function send(body: MessagesRequest, beta = 'oauth-2025-04-20') {
+  async function send(body: Partial<MessagesRequest>, beta = 'oauth-2025-04-20,per-turn-control-2026-07-01') {
     const res = await fetch(`${proxy.url}/v1/messages?beta=true`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': 'test', 'anthropic-beta': beta },
-      body: JSON.stringify({ stream: true, max_tokens: 32000, metadata: { user_id: 'session_abc' }, system: 'You are Claude Code.', tools: [{ name: 'Bash' }], ...body }),
+      body: JSON.stringify({
+        model: 'claude-opus-5-5',
+        stream: true,
+        max_tokens: 128000,
+        output_config: { effort: 'xhigh' },
+        metadata: { user_id: userId },
+        system: MAIN_SYSTEM,
+        tools: [{ name: 'Bash' }],
+        messages: [],
+        ...body,
+      }),
     });
     return { res, text: await res.text() };
   }
 
   it('routes a fresh conversation, streams the reply through, and keeps the prefix stable in the tool loop', async () => {
     await start();
-    const turn1: Message[] = [user('rename getUserData to fetchUserProfile everywhere')];
-    const r1 = await send({ model: 'claude-opus-5-5', messages: turn1 });
+    const turn1: Message[] = [user('rename getUserData to fetchUserProfile everywhere'), control('xhigh')];
+    const r1 = await send({ messages: turn1 });
     assert.equal(r1.res.status, 200);
     assert.match(r1.text, /message_stop/);
-    assert.equal(r1.res.headers.get('x-switchyard-model'), 'claude-haiku-5-5');
+    assert.equal(r1.res.headers.get('x-legato-model'), 'claude-haiku-5-5');
     assert.equal(seen[0]!.body.model, 'claude-haiku-5-5');
     assert.equal(seen[0]!.headers['authorization'], undefined);
     assert.equal(seen[0]!.headers['x-api-key'], 'test');
+    assert.deepEqual(seen[0]!.body.messages[1]!.output_config, { effort: 'medium' });
 
-    // Claude Code continues the tool loop, unaware of the routing.
-    const turn1b: Message[] = [
-      ...turn1,
-      { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'getUserData' } }] },
-      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'src/a.ts:1' }] },
-    ];
-    await send({ model: 'claude-opus-5-5', messages: turn1b });
+    // Claude Code continues the tool loop, unaware of the routing; its control message moves to the new tail.
+    const turn1b: Message[] = [turn1[0]!, toolUse, toolResult, control('xhigh')];
+    await send({ messages: turn1b });
     assert.equal(seen[1]!.body.model, 'claude-haiku-5-5');
-
-    // Whatever the router injected into request 1 must reappear unchanged at the start of request 2.
-    const first = seen[0]!.body.messages;
-    assert.deepEqual(seen[1]!.body.messages.slice(0, first.length), first);
+    // The history the router forwarded in request 1 reappears byte for byte at the start of request 2,
+    // and the turn's effort is still in force without anything having been inserted.
+    assert.deepEqual(seen[1]!.body.messages.slice(0, 1), seen[0]!.body.messages.slice(0, 1));
+    assert.deepEqual(seen[1]!.body.messages.slice(1, 3), [toolUse, toolResult]);
+    assert.deepEqual(seen[1]!.body.messages[3]!.output_config, { effort: 'medium' });
+    assert.equal(String(seen[1]!.headers['anthropic-beta']).includes(PER_MESSAGE_EFFORT_BETA), false);
   });
 
-  it('injects a cache-safe effort change with the beta header', async () => {
+  it('appends a cache-safe effort message with the beta when the client has no control message', async () => {
     await start();
-    await send({ model: 'claude-opus-5-5', messages: [user('thanks!')] });
+    await send({ messages: [user('thanks!')] }, 'oauth-2025-04-20');
     const body = seen[0]!.body;
     assert.equal(body.model, 'claude-haiku-5-5');
     const sys = body.messages.find((m) => m.role === 'system');
@@ -166,15 +227,20 @@ describe('proxy end to end', () => {
     assert.ok(betas.includes(PER_MESSAGE_EFFORT_BETA));
   });
 
-  it('fails open: retries with the original request when the routed one is rejected', async () => {
+  it('fails open: retries with the original request and records that it ran as sent', async () => {
     await start();
     rejectModel = 'claude-haiku-5-5';
     try {
-      const r = await send({ model: 'claude-opus-5-5', messages: [user('rename a to b')] });
+      const r = await send({ messages: [user('rename a to b'), control('xhigh')] });
       assert.equal(r.res.status, 200);
       assert.equal(seen.length, 2);
       assert.equal(seen[1]!.body.model, 'claude-opus-5-5');
+      assert.deepEqual(seen[1]!.body.messages[1]!.output_config, { effort: 'xhigh' });
       assert.equal(proxy.stats.stats.failOpens, 1);
+      const e = proxy.stats.recent[0]!;
+      assert.equal(e.ranOn, 'claude-opus-5-5');
+      assert.equal(e.effort, undefined);
+      assert.equal(e.forwarded, 'original');
     } finally {
       rejectModel = undefined;
     }
@@ -193,13 +259,95 @@ describe('proxy end to end', () => {
     assert.ok(proxy.stats.recent[0]!.costUsd < proxy.stats.recent[0]!.baselineUsd);
   });
 
+  it('resolves a launch alias such as --model dynamic before routing and never forwards it upstream', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'sy-alias-'));
+    await start({ dataDir }, true);
+    // A background request (no tools) goes as sent, apart from the model name the API would reject.
+    await send({ model: 'dynamic', tools: [], messages: [user('hi')] });
+    assert.equal(seen[0]!.body.model, 'claude-opus-5-5');
+    // A routable turn is priced against the alias target and routed from there.
+    await send({ model: 'dynamic', messages: [user('rename a to b'), control('xhigh')] });
+    assert.equal(seen[1]!.body.model, 'claude-haiku-5-5');
+    const status = readSessionStatus(dataDir, SESSION)!;
+    assert.equal(status.alias, 'dynamic');
+    assert.equal(status.incoming, 'dynamic'); // what Claude Code asked for, as the user typed it
+    assert.equal(status.model, 'claude-haiku-5-5');
+    // Shadow mode too, and the alias is matched loosely: Claude Code's header shows it verbatim.
+    await start({ mode: 'shadow' });
+    await send({ model: 'Dynamic Mode', messages: [user('rename a to b'), control('xhigh')] });
+    assert.equal(seen[0]!.body.model, 'claude-opus-5-5');
+    assert.equal(proxy.stats.recent[0]!.forwarded, 'aliased');
+    assert.equal(proxy.stats.recent[0]!.routed, 'claude-haiku-5-5');
+  });
+
+  it('tells the status line when a request was forwarded as sent or failed upstream', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'sy-fail-'));
+    await start({ dataDir }, true);
+    rejectModel = 'gpt-5';
+    try {
+      const { res } = await send({ model: 'gpt-5', messages: [user('Test'), control('xhigh')] });
+      assert.equal(res.status, 400);
+    } finally {
+      rejectModel = undefined;
+    }
+    let status = readSessionStatus(dataDir, SESSION)!;
+    assert.equal(status.through, false);
+    assert.equal(status.lastStatus, 400);
+    assert.equal(status.reason, 'unrecognized model family');
+    // A background request must not overwrite what the line shows.
+    await send({ model: 'claude-opus-5-5', tools: [], messages: [user('title please')] });
+    status = readSessionStatus(dataDir, SESSION)!;
+    assert.equal(status.lastStatus, 400);
+    // The health endpoint identifies the build, so a launcher can tell a stale proxy.
+    const health = (await (await fetch(`${proxy.url}/health`)).json()) as { ok: boolean; build: string; pid: number };
+    assert.equal(health.ok, true);
+    assert.equal(health.pid, process.pid);
+    assert.ok(health.build.length > 0);
+  });
+
+  it("writes a status file for the session's main thread and keeps session state across a restart", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'sy-data-'));
+    await start({ dataDir }, true);
+    await send({ messages: [user('rename a to b'), control('xhigh')] });
+    const status = readSessionStatus(dataDir, SESSION)!;
+    assert.equal(status.model, 'claude-haiku-5-5');
+    assert.equal(status.effort, 'medium');
+    assert.equal(status.incoming, 'claude-opus-5-5');
+    assert.equal(status.turns, 1);
+    assert.ok(status.baselineUsd > status.costUsd);
+    const entry = proxy.stats.recent[0]!;
+    assert.equal(entry.sessionId, SESSION);
+    assert.equal(entry.agentType, 'main');
+    assert.equal(entry.classifier, 'heuristic');
+
+    // A new proxy process finds the conversation on Haiku and holds it through the tool loop.
+    await start({ dataDir }, true);
+    await send({ messages: [user('rename a to b'), toolUse, toolResult, control('xhigh')] });
+    assert.equal(seen[0]!.body.model, 'claude-haiku-5-5');
+    assert.equal(proxy.stats.recent[0]!.switched, false);
+  });
+
+  it('routes an Explore subagent by its type and logs the trial arm for general-purpose agents', async () => {
+    await start({ trial: { agentType: 'general-purpose', model: 'claude-sonnet-5-5', effort: 'high', share: 1 } });
+    const explore = ['You are a Claude agent, built on Anthropic\'s Claude Agent SDK.', 'You are a file search specialist for Claude Code, Anthropic\'s official CLI for Claude.'];
+    await send({ system: explore.map((text) => ({ type: 'text', text })), messages: [user('Find where the retry logic for webhooks lives and report the files.'), control('high')] });
+    assert.equal(seen[0]!.body.model, 'claude-sonnet-5-5');
+    assert.equal(proxy.stats.recent[0]!.agentType, 'Explore');
+
+    const gp = ['You are a Claude agent, built on Anthropic\'s Claude Agent SDK.', 'You are an agent for Claude Code, Anthropic\'s official CLI for Claude. Given the user\'s message, you should use the tools available to complete the task.'];
+    await send({ system: gp.map((text) => ({ type: 'text', text })), messages: [user('Investigate why the dashboard re-renders three times and find the root cause.'), control('high')] });
+    assert.equal(seen[1]!.body.model, 'claude-sonnet-5-5');
+    assert.deepEqual(seen[1]!.body.messages[1]!.output_config, { effort: 'high' });
+    assert.equal(proxy.stats.recent[0]!.arm, 'B');
+  });
+
   it('passes other endpoints through and serves the dashboard', async () => {
     await start();
     const m = await fetch(`${proxy.url}/v1/models`, { headers: { 'x-api-key': 'k' } });
     assert.equal(m.status, 200);
-    const d = await fetch(`${proxy.url}/switchyard`);
-    assert.match(await d.text(), /Switchyard/);
-    const s = await (await fetch(`${proxy.url}/switchyard/stats`)).json();
+    const d = await fetch(`${proxy.url}/legato`);
+    assert.match(await d.text(), /Legato/);
+    const s = await (await fetch(`${proxy.url}/legato/stats`)).json();
     assert.equal(typeof s.stats.requests, 'number');
   });
 });

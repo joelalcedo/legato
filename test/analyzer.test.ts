@@ -146,6 +146,22 @@ describe('transcripts', () => {
     assert.deepEqual(conv!.requests.map((r) => r.usageFinal), [false, true]);
   });
 
+  it('carries the agent type and fork flag from .meta.json into the replay', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sy-'));
+    write(dir, 'p/s.jsonl', [u('u1', null, 'look into it'), a('a1', 'u1', 'm1', { type: 'text', text: 'ok' }, { stop: 'end_turn' })]);
+    write(dir, 'p/s/subagents/agent-e.jsonl', [u('e1', null, 'Find every config loader and report the files.'), a('e2', 'e1', 'm2', { type: 'text', text: 'here' }, { stop: 'end_turn' })]);
+    writeFileSync(join(dir, 'p/s/subagents/agent-e.meta.json'), JSON.stringify({ agentType: 'Explore', spawnDepth: 1 }));
+    const convs = loadConversations(dir);
+    assert.equal(convs.find((c) => !c.isSubagent)!.agentType, 'main');
+    const explore = convs.find((c) => c.isSubagent)!;
+    assert.equal(explore.agentType, 'Explore');
+    assert.equal(explore.isFork, false);
+    const r = replay(convs, defaultConfig(), { normalizeGeneration: true });
+    const sub = r.conversations.find((c) => c.isSubagent)!;
+    assert.equal(sub.tierMix.sonnet, 1);
+    assert.equal(typeof r.totals.effortSavingsUsd, 'number');
+  });
+
   it('loads the bundled sample sessions and their subagent run', () => {
     const convs = loadConversations(SAMPLES);
     assert.equal(convs.filter((c) => !c.isSubagent).length, 5);

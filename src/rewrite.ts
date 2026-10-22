@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import type { RouterConfig } from './config.js';
 import type { Decision } from './engine.js';
-import { blocksOf, OVERRIDE_RE, type ContentBlock, type Features, type Message, type MessagesRequest } from './features.js';
+import { OVERRIDE_RE, type ContentBlock, type Features, type Message, type MessagesRequest } from './features.js';
 import {
   clampEffort,
   defaultEffort,
@@ -13,82 +12,48 @@ import {
 import { normalizeModel } from './pricing.js';
 
 /**
- * Per-message effort changes are injected as effort-only `role: "system"` messages.
- * Claude Code doesn't know about them, so it re-sends its own history without them.
- * The ledger remembers where each one was placed and re-inserts it at the same
- * point on every later request, which keeps the request prefix byte-identical and
- * the prompt cache warm.
+ * Effort is set per message. Claude Code ends every request with a `role: "system"`
+ * control message that carries `output_config.effort` for the turn (beta
+ * per-turn-control-2026-07-01); Legato rewrites that value. The control message is
+ * the tail of the request, never part of the user/assistant history Claude Code re-sends,
+ * so changing it edits no history: the cached prefix and every preserved thinking block
+ * stay valid, and nothing has to be remembered between requests. A client that sends no
+ * control message gets an effort-only message appended instead, under the
+ * mid-conversation effort beta.
  */
-export interface LedgerEntry {
-  /** Index of the anchor message in Claude Code's own message list (before injection). */
-  index: number;
-  /** Hash of the anchor message content, so a compacted or rewritten history drops the entry. */
-  hash: string;
-  effort: Effort;
-}
-
-/** JSON with cache_control removed: Claude Code moves cache breakpoints between requests. */
-function stableJson(value: unknown): string {
-  return JSON.stringify(value, (key, v) => (key === 'cache_control' ? undefined : v));
-}
-
-export function stableHash(value: unknown): string {
-  return createHash('sha1').update(stableJson(value)).digest('hex').slice(0, 16);
-}
-
-export function messageHash(m: Message): string {
-  return stableHash([m.role, m.content]);
-}
-
-/** Drop entries whose anchor no longer matches (after /compact, /clear, /rewind). */
-export function pruneLedger(messages: Message[], ledger: LedgerEntry[]): LedgerEntry[] {
-  return ledger.filter((e) => {
-    const m = messages[e.index];
-    return !!m && messageHash(m) === e.hash;
-  });
+export function controlMessageIndex(messages: Message[]): number {
+  const last = messages.length - 1;
+  const m = messages[last];
+  return m && m.role === 'system' && m.output_config !== undefined ? last : -1;
 }
 
 export function effortMessage(effort: Effort): Message {
   return { role: 'system', content: [], output_config: { effort } };
 }
 
-export function injectLedger(messages: Message[], ledger: LedgerEntry[]): Message[] {
-  if (!ledger.length) return messages;
-  const byIndex = new Map<number, LedgerEntry>();
-  for (const e of ledger) byIndex.set(e.index, e);
-  const out: Message[] = [];
-  messages.forEach((m, i) => {
-    out.push(m);
-    const e = byIndex.get(i);
-    if (e) out.push(effortMessage(e.effort));
-  });
-  return out;
-}
-
 /** Remove a leading //h //s //o //f from user text, the same way on every request. */
-function stripOverrides(messages: Message[]): Message[] {
-  return messages.map((m) => {
+function stripOverrides(messages: Message[]): { messages: Message[]; changed: boolean } {
+  let changed = false;
+  const out = messages.map((m) => {
     if (m.role !== 'user') return m;
     if (typeof m.content === 'string') {
-      return OVERRIDE_RE.test(m.content) ? { ...m, content: m.content.replace(OVERRIDE_RE, '') } : m;
+      if (!OVERRIDE_RE.test(m.content)) return m;
+      changed = true;
+      return { ...m, content: m.content.replace(OVERRIDE_RE, '') };
     }
-    let changed = false;
+    let hit = false;
     const content = m.content.map((b: ContentBlock) => {
       if (b.type === 'text' && typeof b.text === 'string' && OVERRIDE_RE.test(b.text)) {
-        changed = true;
+        hit = true;
         return { ...b, text: b.text.replace(OVERRIDE_RE, '') };
       }
       return b;
     });
-    return changed ? { ...m, content } : m;
+    if (!hit) return m;
+    changed = true;
+    return { ...m, content };
   });
-}
-
-export function effectiveEffort(req: MessagesRequest, ledger: LedgerEntry[]): Effort | undefined {
-  const last = ledger[ledger.length - 1];
-  if (last) return last.effort;
-  const top = req.output_config?.effort as Effort | undefined;
-  return top ?? defaultEffort(req.model);
+  return { messages: changed ? out : messages, changed };
 }
 
 function canChangeEffortPerMessage(model: string, thinkingType: string | undefined): boolean {
@@ -99,31 +64,30 @@ function canChangeEffortPerMessage(model: string, thinkingType: string | undefin
 
 export interface Rewrite {
   body: MessagesRequest;
-  ledger: LedgerEntry[];
   betas: string[];
   /** Effort this request runs at after rewriting, when known. */
   effort?: Effort;
+  /** A user turn whose effort differs from what Claude Code asked for. */
   effortChanged: boolean;
   modified: boolean;
   notes: string[];
 }
 
 /**
- * Apply a routing decision to a request: set the model, make parameters valid for
- * it, and maintain the per-message effort ledger.
+ * Apply a routing decision to a request: set the model, make parameters valid for it,
+ * and set the turn's effort. `sessionEffort` is the effort the current turn started on,
+ * so its tool-loop steps (which the engine holds without an effort) keep running there.
  */
 export function rewriteRequest(
   original: MessagesRequest,
   decision: Decision,
   features: Features,
-  ledgerIn: LedgerEntry[],
+  sessionEffort: Effort | undefined,
   cfg: RouterConfig,
 ): Rewrite {
   const notes: string[] = [];
   const body = structuredClone(original) as MessagesRequest;
   const sourceMessages = original.messages ?? [];
-  let ledger = pruneLedger(sourceMessages, ledgerIn);
-  if (ledger.length !== ledgerIn.length) notes.push(`dropped ${ledgerIn.length - ledger.length} stale effort entries`);
 
   const model = decision.model;
   body.model = model;
@@ -155,35 +119,39 @@ export function rewriteRequest(
     }
   }
 
-  let messages = stripOverrides(sourceMessages);
-  let effortChanged = false;
-  const thinkingType = body.thinking?.type;
-  const perMessage = cfg.routeEffort && canChangeEffortPerMessage(model, thinkingType);
-
-  if (perMessage && features.newUserTurn && decision.effort) {
-    const current = effectiveEffort(body, ledger);
-    if (current !== decision.effort) {
-      const anchor = sourceMessages.length - 1;
-      ledger = [...ledger.filter((e) => e.index !== anchor), {
-        index: anchor,
-        hash: messageHash(sourceMessages[anchor]!),
-        effort: decision.effort,
-      }];
-      effortChanged = true;
-      notes.push(`effort ${current ?? 'default'} -> ${decision.effort} (per-message, cache-safe)`);
-    }
-  }
-
+  const stripped = stripOverrides(sourceMessages);
+  let messages = stripped.messages;
+  let changed = stripped.changed;
   const betas: string[] = [];
-  if (perMessage && ledger.length) {
-    messages = injectLedger(messages, ledger);
-    betas.push(PER_MESSAGE_EFFORT_BETA);
+
+  const asked = features.incomingEffort as Effort | undefined;
+  const perMessage = cfg.routeEffort && canChangeEffortPerMessage(model, body.thinking?.type);
+  // A user turn takes the engine's effort; a tool-loop step keeps the turn's.
+  const wanted = features.newUserTurn ? decision.effort : (decision.effort ?? sessionEffort);
+  const desired = wanted ?? asked;
+  const target = desired ? clampEffort(model, desired) : undefined;
+  let effort = asked ?? defaultEffort(model);
+  let effortChanged = false;
+
+  if (perMessage && target && target !== asked) {
+    const idx = controlMessageIndex(messages);
+    if (idx >= 0) {
+      const control = messages[idx]!;
+      messages = [...messages.slice(0, idx), { ...control, output_config: { ...(control.output_config as object), effort: target } }];
+      notes.push(`effort ${asked ?? 'default'} -> ${target} (rewrote the per-turn control message)`);
+    } else {
+      messages = [...messages, effortMessage(target)];
+      betas.push(PER_MESSAGE_EFFORT_BETA);
+      notes.push(`effort ${asked ?? 'default'} -> ${target} (appended an effort-only message)`);
+    }
+    changed = true;
+    effort = target;
+    effortChanged = features.newUserTurn;
   }
   body.messages = messages;
 
-  const effort = perMessage ? effectiveEffort(body, ledger) : (body.output_config?.effort as Effort | undefined) ?? defaultEffort(model);
-  const modified = model !== original.model || betas.length > 0 || notes.length > 0 || messages !== sourceMessages;
-  return { body, ledger, betas, effort, effortChanged, modified, notes };
+  const modified = model !== original.model || betas.length > 0 || notes.length > 0 || changed;
+  return { body, betas, effort, effortChanged, modified, notes };
 }
 
 export function mergeBetaHeader(existing: string | undefined, add: string[]): string | undefined {
@@ -195,11 +163,4 @@ export function mergeBetaHeader(existing: string | undefined, add: string[]): st
   );
   for (const b of add) set.add(b);
   return set.size ? [...set].join(',') : undefined;
-}
-
-/** Text of every block for debugging and tests. */
-export function plainText(m: Message): string {
-  return blocksOf(m.content)
-    .map((b) => (typeof b.text === 'string' ? b.text : ''))
-    .join('');
 }

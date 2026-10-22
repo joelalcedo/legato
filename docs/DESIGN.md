@@ -13,24 +13,25 @@ The Claude API caches by exact prefix, per model. Claude Code re-sends the whole
 
 A cache write costs 25x a cache read on Opus and Sonnet 5.5. So a model switch on a large context is expensive, and the saving per request afterwards is small. Two consequences:
 
-1. **Opus ↔ Sonnet is where the math decides.** On a 150K context the rebuild on Sonnet costs ~$0.35, against ~$0.03 saved per request.
-2. **Dropping to Haiku is almost always worth it.** Haiku 5.5 writes are so cheap that even a 150K rebuild costs under $0.10, while each request afterwards saves ~$0.05 on reads and output.
+1. Between Opus and Sonnet, the math decides. On a 150K context the rebuild on Sonnet costs about $0.35, against about $0.03 saved per request.
+2. Dropping to Haiku almost always pays. Haiku 5.5 writes are so cheap that even a 150K rebuild costs under $0.10, while each request afterwards saves about $0.05 on reads and output. Above 100K tokens of prompt, Haiku's prices multiply by five, which is why it is rarely chosen on long sessions.
 
-Effort is different: on Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 5 and Fable 5.1, a per-message effort change keeps the cache. So effort is the free gear and model is the expensive one.
+Effort is different: on Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 5 and Fable 5.1, a per-turn effort change keeps the cache. So effort is the free gear and model is the expensive one.
 
 ## Decision procedure
 
 For each `/v1/messages` request:
 
-1. **Pass through** if the request has no tools (Claude Code background calls such as titles) or is already on Haiku.
-2. **Hold** inside a tool loop: the last message only carries tool results. Switching here would rebuild the cache for one step, and per-message effort only takes effect on new user input anyway.
-3. **Pick a target** at a user turn:
+1. Pass through if the request has no tools (Claude Code background calls such as titles) or is already on Haiku.
+2. Hold inside a tool loop: the last message only carries tool results. Switching here would rebuild the cache for one step. Claude Code's own prompts (the next-prompt suggestion after each turn, idle recaps, summaries) are held the same way.
+3. Pick a target at a user turn:
    - `//h //s //o //f` override, else the classifier's tier and effort.
    - Plan mode floors at `planTier` (Opus).
-   - If the previous task produced `escalateAfterErrors` or more failing tool results, step one tier above the current model.
+   - If the previous task ended with `escalateAfterErrors` or more failing tool results, step one tier above the current model.
+   - A subagent's first request goes by its agent type when `subagentTiers` names it; a fork is never switched; a downshift that would discard more than `holdThinkingTokens` of the current model's thinking is held.
    - Clamp to `[floor, ceiling]`; the default ceiling is the model Claude Code asked for.
-4. **Gate the switch on cache economics** (below). If a downshift doesn't pay, stay and apply the classifier's effort instead.
-5. **Rewrite**: set the model, make parameters valid for it (drop `thinking: disabled` on always-thinking models, clamp `max_tokens`, clamp effort), strip the override prefix, and maintain the effort ledger.
+4. Gate the switch on cache economics (below). If a downshift doesn't pay, stay and apply the classifier's effort instead.
+5. Rewrite: set the model, make parameters valid for it (drop `thinking: disabled` on always-thinking models, clamp `max_tokens`, clamp effort), strip the override prefix, and set the turn's effort.
 
 ## Switch economics
 
@@ -62,15 +63,19 @@ with `N = expectedRunRequests` (default 8, counting tool-loop steps) and `p_retu
 
 A switch is free (no gate) when there is no cache to lose: the conversation's first request, the current model's cache older than the TTL, or `C < freeSwitchTokens`.
 
-## The effort ledger
+## Setting the effort
 
-A per-message effort change is a message `{"role":"system","content":[],"output_config":{"effort":"low"}}` placed right after the user turn it applies to. Claude Code never sees it, so its next request omits it, which would change the prefix and lose the cache.
+Claude Code attaches a `role: "system"` control message to each user turn, under the `per-turn-control-2026-07-01` beta. It carries the environment block and `output_config.effort`. On the turn's first request that message is the tail of the request, and Legato sets the effort on it. On later requests in the same turn, the loop's assistant and tool-result messages follow it, so Legato appends an effort-only message `{"role":"system","content":[],"output_config":{"effort":"low"}}` at the tail instead.
 
-The ledger stores `(index, hash of the anchor message, effort)` in Claude Code's own message indices. On every request Switchyard re-inserts each entry after its anchor if the anchor's hash still matches (hashes ignore `cache_control`, which Claude Code moves between requests). After `/compact` or `/rewind` the anchors stop matching and the entries drop, which is correct because the prefix changed anyway.
+Both edits touch only the tail of the request, never the user and assistant history, so the cached prefix and preserved thinking blocks stay valid. Nothing has to be remembered between requests, and a proxy restart changes nothing.
+
+One cost is still unmeasured: Claude Code re-sends its control message with the original effort in the loop's later requests. If `output_config` is part of the cache key, the first loop step re-writes the control message's tokens once per turn. The live log's cache-read counts will show whether that happens.
+
+An earlier version inserted effort messages into the history and tracked them in a ledger keyed by message index. It worked until Claude Code's control message moved between requests; the ledger's anchors then drifted and its entries were dropped silently. Editing only the tail removed that failure mode.
 
 ## Conversation identity
 
-The key is a hash of `metadata.user_id` (which carries Claude Code's session id), the system prompt and the first message. Subagents share the session id but have their own system prompt and task, so each gets its own state, and each subagent's first request is a free routing choice.
+The key is a hash of `metadata.user_id` (which carries Claude Code's session id), the system prompt, the first message, and the position of a fork's boilerplate. Subagents share the session id but have their own system prompt and task, so each gets its own state, and each subagent's first request is a free routing choice. A fork re-sends its parent's history and gets its own key, so it is held on the parent's model.
 
 ## Accounting
 
