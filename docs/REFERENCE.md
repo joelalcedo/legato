@@ -13,7 +13,14 @@ legato stats                     # totals from the running or last proxy
 legato statusline                # the line Claude Code's status bar shows (reads the session id on stdin)
 ```
 
-Options for `start` and `legato`: `--preset conservative|balanced|aggressive` (conservative never goes below Sonnet), `--classifier haiku` (Haiku 5.5 classifies each task; needs `ANTHROPIC_API_KEY` or `LEGATO_CLASSIFIER_KEY`), `--trial general-purpose=claude-sonnet-5-5/high:50` (route half of those subagents to Sonnet and log which half, so the two can be compared), `--no-effort`, `--fable`.
+Options for `start` and `legato`:
+
+- `--preset conservative`, `balanced` (the default) or `aggressive`. Conservative never goes below Sonnet and wants 5¢ of net saving before a switch. Aggressive switches for any saving at all, counts on 12 more requests instead of 8, and treats conversations under 20K tokens as free to switch.
+- `--classifier haiku` asks Haiku 5.5 to classify each task instead of the keyword rules. Needs `ANTHROPIC_API_KEY` or `LEGATO_CLASSIFIER_KEY`.
+- `--trial general-purpose=claude-sonnet-5-5/high:50` routes half of those subagents to Sonnet and logs which half each one was in, so the two halves can be compared.
+- `--no-effort` leaves the effort alone and only routes the model.
+- `--fable` allows Fable 5.1 as a tier above Opus.
+- `--ttl 300` sets how long the API keeps a cache, in seconds; by default it is read from each request.
 
 Starting a prompt with `//h`, `//s`, `//o` or `//f` forces Haiku, Sonnet, Opus or Fable for that task.
 
@@ -33,7 +40,7 @@ The status line is what shows the model that is actually running. `legato` adds 
 
 - It never edits or reorders Claude Code's messages. The effort goes on a small message appended at the end of the request, so the cached prefix and preserved thinking stay valid.
 - It never switches models in the middle of a task. Thinking and cache stay with the model that produced them.
-- It never leaves a failed rewrite failed. If the API rejects a rewritten request, the proxy retries once with exactly what Claude Code sent and records that it ran as sent.
+- If the API rejects a rewritten request, the proxy sends it once more exactly as Claude Code wrote it, and records that it ran as sent.
 - In shadow mode it never changes a byte. Every log line says `forwarded: "original"`, so that claim can be checked line by line.
 - It never counts Claude Code's own hidden prompts (the next-prompt suggestion after every task, idle recaps, summaries) as your tasks. They keep the current model and effort.
 - Nothing leaves your machine except the API calls Claude Code already makes.

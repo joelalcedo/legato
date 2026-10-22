@@ -1,4 +1,4 @@
-Stay on Opus 5.5 for this task, using medium effort instead of xhigh (a switch to Sonnet 5.5 would cost $0.40 more than it saves).
+Stay on Opus 5.5 for this task, using medium effort instead of xhigh.
   Looks like an ordinary coding task.
-  Staying on Opus 5.5: a switch to Sonnet 5.5 would cost $0.40 to rebuild the cache and save about 3¢ a request, so it would lose $0.40; lowering the effort instead.
-  Arithmetic: 3¢ saved a request × 8 requests = $0.28, minus $0.40 to rebuild the cache and $0.27 to switch back later = -$0.40 net.
+  Staying on Opus 5.5: switching to Sonnet 5.5 would cost $0.40 to rebuild the cache and about $0.27 to come back later, and save only 3.5¢ a request ($0.28 over the next 8), a loss of $0.39. Legato lowers the effort instead.
+  This assumes about 8 more requests on Sonnet 5.5 and a 30% chance of coming back to Opus 5.5 after its cache has expired.

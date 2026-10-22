@@ -14,13 +14,14 @@ import { usd } from './html.js';
 import type { Effort } from './models.js';
 import { BUILD, startProxy } from './proxy.js';
 import { displayName, formatStatus, readSessionStatus, readStats } from './stats.js';
-import { capitalize, headline, money } from './words.js';
+import { capitalize, headline } from './words.js';
 
-const HELP = `legato: cache-aware model routing for Claude Code
+const HELP = `legato: runs Claude Code and picks the model and effort for each task, changing model only
+        when that saves money after paying to rebuild the prompt cache
 
 Usage
   legato [any claude arguments]
-      Run Claude Code through the router. Starts the proxy if it isn't running, adds a status
+      Run Claude Code through Legato. Starts the proxy if it isn't running, adds a status
       line to ~/.claude/settings.json on first use, then launches claude as "Dynamic mode": the
       header says so, the status line says which model and effort each turn actually ran on.
       Arguments go to claude unchanged (e.g. legato --resume). "legato claude" is the same.
@@ -28,29 +29,32 @@ Usage
   legato start [--port 8787] [--mode live|shadow] [--preset balanced] [--ttl 300]
                    [--classifier heuristic|haiku] [--trial <agentType>=<model>[/<effort>][:<share%>]]
       Run the proxy by itself (shadow mode decides and logs but forwards every request as
-      sent). Then, in another terminal, "legato claude", or by hand:
+      sent). --ttl is how long the API keeps a cache, in seconds; by default it is read from
+      each request. Then, in another terminal, "legato claude", or by hand:
         ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model "Dynamic mode"
       "Dynamic mode" is an alias the proxy resolves (modelAliases in config.json; default:
       route up to Opus 5.5). A real model name works too and becomes the ceiling.
       Dashboard: http://127.0.0.1:8787/legato
       --classifier haiku asks Haiku 5.5 to classify each user turn (needs ANTHROPIC_API_KEY).
       --trial general-purpose=claude-sonnet-5-5/high:50 routes half of those subagents to
-      Sonnet and logs the arm, so the two halves can be compared.
+      Sonnet and logs which half each one was in, so the two halves can be compared.
 
   legato analyze [--dir ~/.claude/projects] [--since 30d] [--preset balanced]
                      [--ttl 300] [--html report.html] [--json] [--keep-models]
-      Replay your Claude Code transcripts through the router and report what it
-      would have cost, with cache rebuilds priced in.
+      Replay your Claude Code transcripts through Legato and report what they
+      would have cost, after paying for every cache rebuild a switch causes.
 
   legato explain "<prompt>" [--context 120000] [--current claude-opus-5-5] [--idle 30] [--effort xhigh]
-      Show the decision the engine makes for one user turn.
+      Show the decision Legato would make for one prompt, and the arithmetic behind it.
 
   legato stats        Print totals from the running or last proxy session.
   legato statusline   One line for Claude Code's statusLine setting: the model and effort this
                           session is running on, and what the routing has saved. Add to settings.json:
                           "statusLine": {"type": "command", "command": "legato statusline"}
 
-Presets: conservative (never below Sonnet), balanced (default), aggressive.
+Presets: conservative never goes below Sonnet and wants 5¢ of net saving before a switch; balanced is
+the default; aggressive switches for any saving at all, counts on 12 more requests instead of 8, and
+treats conversations under 20K tokens as free to switch.
 Per-turn override: start a prompt with //h, //s, //o or //f to force Haiku, Sonnet, Opus or Fable.
 `;
 
@@ -317,17 +321,12 @@ async function main(): Promise<void> {
       };
       const d = decide({ req, features: extractFeatures(req), state, cfg, now, contextTokens: ctx });
       const h = { from: current, to: d.model, effort: d.effort, asked: askedEffort, switched: d.switched, held: d.held };
-      let out = headline(h) + '\n' + d.reasons.map((r) => `  ${capitalize(r)}.`).join('\n') + '\n';
+      let out = headline(h, 'imperative', false) + '\n' + d.reasons.map((r) => `  ${capitalize(r)}.`).join('\n') + '\n';
       if (d.economics) {
-        const e = d.economics;
-        const n = cfg.expectedRunRequests;
-        const costs = [
-          ...(e.rebuildUsd < 0.005 ? [] : [`${money(e.rebuildUsd)} to rebuild the cache`]),
-          `${money(e.returnUsd)} to switch back later`,
-        ];
+        const other = displayName(d.held?.model ?? d.model);
         out +=
-          `  Arithmetic: ${money(e.perRequestSavingUsd)} saved a request × ${n} requests = ${money(e.perRequestSavingUsd * n)}, ` +
-          `minus ${costs.join(' and ')} = ${money(e.netUsd)} net${e.rebuildUsd < 0.005 ? ' (the cache rebuild costs nothing here)' : ''}.\n`;
+          `  This assumes about ${cfg.expectedRunRequests} more requests on ${other} and a ${Math.round(cfg.returnProbability * 100)}% chance ` +
+          `of coming back to ${displayName(current)} after its cache has expired.\n`;
       }
       process.stdout.write(out);
       return;

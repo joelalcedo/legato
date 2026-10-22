@@ -363,7 +363,7 @@ describe('agents', () => {
     const d = decide({ req: r, features: extractFeatures(r), state: newState(), cfg, now: NOW, contextTokens: 300_000 });
     assert.equal(d.model, 'claude-opus-5-5');
     assert.equal(d.switched, false);
-    assert.match(d.reasons.join(' '), /a fork of the parent conversation: it inherits 300K tokens of Opus 5.5's context/);
+    assert.match(d.reasons.join(' '), /a fork of the parent conversation: it carries the parent's 300K tokens of history and Opus 5.5's thinking/);
   });
 
   it('holds a downshift that would discard the current model\'s thinking, and lowers effort instead', () => {

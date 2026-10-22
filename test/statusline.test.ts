@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { displayName, formatStatus, type SessionStatus } from '../src/stats.js';
-import { money } from '../src/words.js';
+import { arithmetic, money, money1 } from '../src/words.js';
 
 const base: SessionStatus = {
   sessionId: 's',
@@ -26,7 +26,11 @@ describe('status line', () => {
     assert.equal(displayName('dynamic'), 'dynamic');
   });
 
-  it('writes money the way people say it', () => {
+  it('writes money the way people say it, and makes the switch sum add up on paper', () => {
+    assert.equal(money1(0.019), '1.9¢');
+    assert.equal(money1(0.12), '$0.12');
+    const a = arithmetic({ perRequestSavingUsd: 0.019, rebuildUsd: 0.048, returnUsd: 0.037 }, 8);
+    assert.deepEqual([a.saving, a.rebuild, a.back, a.net], [0.15, 0.05, 0.04, 0.06]);
     assert.equal(money(0.97), '$0.97');
     assert.equal(money(0.039), '4¢');
     assert.equal(money(0.001), 'under 1¢');
@@ -59,14 +63,14 @@ describe('status line', () => {
     assert.match(formatStatus(thinking), /\(a switch to Sonnet 5\.5 would throw away this conversation's thinking\)/);
   });
 
-  it('says the effort is the one you set when nothing changed', () => {
+  it('says it kept the model, and the effort is the one you set, when nothing changed', () => {
     const same: SessionStatus = { ...base, model: 'claude-opus-5-5', effort: 'xhigh', switched: false, turns: 1 };
-    assert.equal(formatStatus(same), 'Legato: Opus 5.5 for this task, using xhigh effort, as you set · saved $0.58 this session');
+    assert.equal(formatStatus(same), 'Legato: kept Opus 5.5 for this task, using xhigh effort, as you set · saved $0.58 this session');
   });
 
   it('does not call the first pick a switch from the "Dynamic mode" alias, and marks shadow mode', () => {
     const aliased: SessionStatus = { ...base, alias: 'Dynamic mode', incoming: 'Dynamic mode', model: 'claude-haiku-5-5', effort: 'low', turns: 1 };
-    assert.equal(formatStatus(aliased), 'Legato: Haiku 5.5 for this task, using low effort instead of xhigh · saved $0.58 this session');
+    assert.equal(formatStatus(aliased), 'Legato: chose Haiku 5.5 for this task, using low effort instead of xhigh · saved $0.58 this session');
     const later: SessionStatus = { ...aliased, from: 'claude-opus-5-5' };
     assert.equal(
       formatStatus(later),

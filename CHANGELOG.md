@@ -20,8 +20,8 @@
   suggestion request alone would have moved a Haiku session back to Opus after every turn.
 - Subagents are routed by agent type at their first request (`subagentTiers`; Explore agents go to Sonnet).
 - Forks are never switched: they inherit the parent's context, cache and thinking.
-- A downshift that would discard more than `holdThinkingTokens` of the current model's thinking
-  is held, and effort adjusted instead.
+- A move to a cheaper model that would discard more than `holdThinkingTokens` of the current
+  model's thinking is held, and effort adjusted instead.
 - The user's `/effort` is a ceiling: hard turns keep it, others may run lower.
 - Escalation happens only when the previous task ended on failing tool results.
 - A message carrying tool results is a loop step even when it also carries text.

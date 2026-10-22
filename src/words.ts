@@ -30,9 +30,42 @@ export function tokens(n: number): string {
   return n >= 1000 ? `${Math.round(n / 1000)}K tokens` : `${n} tokens`;
 }
 
+/** Money to a tenth of a cent when under 10¢, so a per-request figure times a run adds up on paper. */
+export function money1(usd: number): string {
+  const v = Math.abs(usd);
+  if (v >= 0.1) return money(usd);
+  const tenths = Math.round(v * 1000) / 10;
+  if (tenths === 0) return 'under 0.1¢';
+  return `${usd < 0 ? '-' : ''}${Number.isInteger(tenths) ? tenths : tenths.toFixed(1)}¢`;
+}
+
 /** A cheaper model can be cheaper even uncached, so a rebuild cost at or below zero is "nothing". */
 export function rebuildPhrase(usd: number): string {
   return usd < 0.005 ? 'costs nothing up front' : `costs ${money(usd)} to rebuild the cache`;
+}
+
+export interface Arithmetic {
+  perRequest: number;
+  run: number;
+  /** perRequest × run, in whole cents. */
+  saving: number;
+  rebuild: number;
+  back: number;
+  /** saving − rebuild − back, from the rounded terms, so the printed sum is true. */
+  net: number;
+}
+
+/**
+ * The switch sum with each term rounded to the cent before the subtraction, so a reader who
+ * checks the printed figures gets the printed result. It can differ from the engine's exact net
+ * by a cent; every sentence uses this one, so no two sentences disagree.
+ */
+export function arithmetic(e: { perRequestSavingUsd: number; rebuildUsd: number; returnUsd: number }, run: number): Arithmetic {
+  const cents = (x: number) => Math.round(x * 100) / 100;
+  const saving = cents(e.perRequestSavingUsd * run);
+  const rebuild = cents(Math.max(0, e.rebuildUsd));
+  const back = cents(e.returnUsd);
+  return { perRequest: e.perRequestSavingUsd, run, saving, rebuild, back, net: cents(saving - rebuild - back) };
 }
 
 const SIGNAL_WORDS: Record<string, string> = {
@@ -119,19 +152,20 @@ export interface Headline {
   held?: Hold;
 }
 
-/** "switched from Opus 5.5 to Sonnet 5.5 for this task" / "staying on Opus 5.5 for this task" / "Haiku 5.5 for this task". */
-export function modelClause(h: Headline, tense: 'past' | 'imperative' | 'conditional' = 'past'): string {
+type Tense = 'past' | 'imperative' | 'conditional';
+
+/**
+ * "switched from Opus 5.5 to Sonnet 5.5 for this task" / "staying on Opus 5.5 for this task" /
+ * "chose Haiku 5.5 for this task" (a conversation's first pick) / "kept Opus 5.5 for this task".
+ */
+export function modelClause(h: Headline, tense: Tense = 'past'): string {
   const to = displayName(h.to);
   const from = h.from ? displayName(h.from) : undefined;
-  if (h.switched && from && from !== to) {
-    const verb = tense === 'past' ? 'switched' : tense === 'imperative' ? 'Switch' : 'would switch';
-    return `${verb} from ${from} to ${to} for this task`;
-  }
-  if (h.held) {
-    const verb = tense === 'past' ? 'staying' : tense === 'imperative' ? 'Stay' : 'would stay';
-    return `${verb} on ${to} for this task`;
-  }
-  return tense === 'imperative' ? `Keep ${to} for this task` : `${to} for this task`;
+  const verb = (past: string, imperative: string) => (tense === 'past' ? past : tense === 'imperative' ? imperative : `would ${imperative.toLowerCase()}`);
+  if (h.switched && from && from !== to) return `${verb('switched', 'Switch')} from ${from} to ${to} for this task`;
+  if (h.held) return `${verb('staying', 'Stay')} on ${to} for this task`;
+  if (!from) return `${verb('chose', 'Choose')} ${to} for this task`;
+  return `${verb('kept', 'Keep')} ${to} for this task`;
 }
 
 /** ", using medium effort instead of xhigh" / ", using xhigh effort, as you set" / "" */
@@ -143,9 +177,13 @@ export function effortClause(h: Headline): string {
   return s;
 }
 
-/** The one-line summary `legato explain` prints (imperative) and the proxy logs (past tense). */
-export function headline(h: Headline, tense: 'past' | 'imperative' | 'conditional' = 'imperative'): string {
+/**
+ * The one-line summary `legato explain` prints (imperative) and the proxy logs (past tense).
+ * `withHold` adds why a wanted switch was not taken; `explain` leaves it out because the reasons
+ * that follow say it with the numbers.
+ */
+export function headline(h: Headline, tense: Tense = 'imperative', withHold = true): string {
   let s = modelClause(h, tense) + effortClause(h);
-  if (h.held) s += ` (${holdClause(h.held)})`;
+  if (h.held && withHold) s += ` (${holdClause(h.held)})`;
   return capitalize(s) + '.';
 }

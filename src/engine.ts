@@ -4,7 +4,7 @@ import type { Features, MessagesRequest } from './features.js';
 import { shareOf } from './hash.js';
 import { clampEffort, EFFORT_ORDER, effortRank, tierOf, tierRank, TIER_ORDER, type Effort, type Tier } from './models.js';
 import { priceFor, type Price } from './pricing.js';
-import { article, describeSignals, displayName, money, rebuildPhrase, taskKind, tierName, tokens, type Hold } from './words.js';
+import { arithmetic, article, describeSignals, displayName, money, money1, rebuildPhrase, taskKind, tierName, tokens, type Hold } from './words.js';
 
 /** What the router remembers about one conversation (main session or a single subagent). */
 export interface ConversationState {
@@ -255,7 +255,11 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
 
   const clamped = clampTier(target, allowed);
   if (clamped !== target) {
-    reasons.push(`${tierName(target)} is outside this preset's range (${cfg.floor} to ${cfg.ceiling}), so ${tierName(clamped)}`);
+    reasons.push(
+      cfg.ceiling === 'incoming' && tierRank(target) > tierRank(incomingTier)
+        ? `${tierName(target)} would fit, but Legato never goes above the model Claude Code asked for, ${displayName(incomingModel)}`
+        : `${tierName(target)} would fit, but this preset only uses ${cfg.floor} to ${cfg.ceiling}, so ${tierName(clamped)}`,
+    );
   }
   target = clamped;
 
@@ -268,7 +272,7 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
 
   if (switched && features.isFork) {
     reasons.push(
-      `a fork of the parent conversation: it inherits ${tokens(ctx)} of ${current}'s context and thinking, so it stays there`,
+      `a fork of the parent conversation: it carries the parent's ${tokens(ctx)} of history and ${current}'s thinking, so it stays on ${current}`,
     );
     model = currentModel;
     target = currentTier;
@@ -283,7 +287,7 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
     economics = switchEconomics(currentModel, model, state, ctx, cfg, now);
     reasons.push(
       `staying on ${current}: a switch to ${to} would throw away about ${tokens(thinkingTokens)} of its thinking, ` +
-        `which ${to} cannot read; lowering the effort instead`,
+        `which ${to} cannot read. Legato lowers the effort instead`,
     );
     held = { model, why: 'thinking', thinkingTokens, rebuildUsd: economics.rebuildUsd };
     model = currentModel;
@@ -304,32 +308,34 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
       );
     } else {
       economics = switchEconomics(currentModel, model, state, ctx, cfg, now);
+      const a = arithmetic(economics, cfg.expectedRunRequests);
       const upgrading = tierRank(target) > tierRank(currentTier);
       if (upgrading) {
         if (!strongUpgrade) {
           reasons.push(
-            `staying on ${current}: the task is not clearly hard enough to pay ${money(economics.rebuildUsd)} to rebuild the cache on ${to}`,
+            `staying on ${current}: the task is not clearly hard enough to pay ${money(a.rebuild)} to rebuild the cache on ${to}`,
           );
-          held = { model, why: 'weak-upgrade', rebuildUsd: economics.rebuildUsd };
+          held = { model, why: 'weak-upgrade', rebuildUsd: a.rebuild };
           model = currentModel;
           target = currentTier;
           switched = false;
         } else {
-          reasons.push(`moving up to ${to} for quality; rebuilding its cache costs ${money(economics.rebuildUsd)}`);
+          reasons.push(`moving up to ${to} for quality; rebuilding its cache costs ${money(a.rebuild)}`);
         }
       } else if (economics.netUsd < cfg.minNetSavingsUsd) {
         reasons.push(
-          `staying on ${current}: a switch to ${to} would cost ${money(economics.rebuildUsd)} to rebuild the cache ` +
-            `and save about ${money(economics.perRequestSavingUsd)} a request, so it would lose ${money(-economics.netUsd)}; lowering the effort instead`,
+          `staying on ${current}: switching to ${to} would cost ${money(a.rebuild)} to rebuild the cache and about ${money(a.back)} ` +
+            `to come back later, and save only ${money1(a.perRequest)} a request (${money(a.saving)} over the next ${a.run}), ` +
+            `a loss of ${money(-a.net)}. Legato lowers the effort instead`,
         );
-        held = { model, why: 'cost', rebuildUsd: economics.rebuildUsd, lossUsd: -economics.netUsd };
+        held = { model, why: 'cost', rebuildUsd: a.rebuild, lossUsd: -a.net };
         model = currentModel;
         target = currentTier;
         switched = false;
       } else {
         reasons.push(
-          `switching to ${to}: it saves about ${money(economics.perRequestSavingUsd)} a request and ${rebuildPhrase(economics.rebuildUsd)}, ` +
-            `about ${money(economics.netUsd)} ahead over the next ${cfg.expectedRunRequests} requests`,
+          `switching to ${to}: it saves about ${money1(a.perRequest)} on each of the next ${a.run} requests (${money(a.saving)}), ` +
+            `${rebuildPhrase(a.rebuild)} and about ${money(a.back)} to come back to ${current} later, so it comes out about ${money(a.net)} ahead`,
         );
       }
     }

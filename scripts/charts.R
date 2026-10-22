@@ -37,9 +37,11 @@ turns <- turns %>% mutate(
     TRUE ~ "Other"))
 
 by_task <- turns %>% group_by(task) %>%
-  summarise(n = n(), without = mean(baselineUsd), with = mean(routedUsd), total_saved = sum(saved), saved = mean(saved),
+  summarise(n = n(), without = mean(baselineUsd), with = mean(routedUsd), median_without = median(baselineUsd),
+            median_with = median(routedUsd), total_saved = sum(saved), saved = mean(saved),
             share_switched = mean(switched), share_held = mean(held), .groups = "drop") %>%
-  filter(n >= 10, task != "Other subagent run") %>% arrange(saved)
+  filter(n >= 10, task != "Other subagent run") %>% arrange(total_saved)
+shown <- sum(by_task$n); left_out <- nrow(turns) - shown
 by_task$task <- factor(by_task$task, levels = by_task$task)
 print(as.data.frame(by_task %>% mutate(across(where(is.numeric), ~ round(.x, 3)))), row.names = FALSE)
 
@@ -52,9 +54,9 @@ day <- function(x, year = FALSE) paste(as.integer(format(x, "%d")), format(x, if
 window <- sprintf("%s to %s", day(min(turns$at)), day(max(turns$at), TRUE))
 
 # Chart 1: what a task costs, with and without Legato.
-lab <- by_task %>% mutate(txt = sprintf("%s %s per task  (%d tasks)", if_else(saved >= 0, "saves", "costs"),
-                                        dollar(abs(saved), accuracy = 0.01), n),
-                          txt = if_else(saved >= 0, txt, sub(" per task", " more per task", txt)),
+lab <- by_task %>% mutate(txt = sprintf("%s %s%s per task, about %s over %d tasks", if_else(saved >= 0, "saves", "costs"),
+                                        dollar(abs(saved), accuracy = 0.01), if_else(saved >= 0, "", " more"),
+                                        dollar(abs(total_saved), accuracy = 1), n),
                           x = pmax(without, with))
 long <- by_task %>% pivot_longer(c(without, with), names_to = "which", values_to = "usd") %>%
   mutate(which = factor(if_else(which == "without", "Claude Code alone", "With Legato"), levels = c("Claude Code alone", "With Legato")))
@@ -64,13 +66,13 @@ p1 <- ggplot(by_task) +
   geom_point(data = long, aes(usd, task, colour = which), size = 3.4) +
   geom_text(data = lab, aes(x = x, y = task, label = txt), hjust = 0, nudge_x = 0.12, size = 3.2, colour = INK2) +
   scale_colour_manual(values = c("Claude Code alone" = WITHOUT, "With Legato" = WITH)) +
-  scale_x_continuous(labels = dollar_format(accuracy = 1), breaks = seq(0, 10, 2), expand = expansion(mult = c(0.02, 0.55))) +
+  scale_x_continuous(labels = dollar_format(accuracy = 1), breaks = seq(0, 10, 2), expand = expansion(mult = c(0.02, 0.75))) +
   theme_bk + theme(panel.grid.major.y = element_blank(), axis.text.y = element_text(colour = INK, size = 11)) +
   labs(x = "Mean cost of one task, at list prices", y = NULL,
-       title = "Legato saves on ordinary tasks and subagent runs, and pays a few cents extra on hard tasks to bring Opus back",
-       subtitle = sprintf("Mean cost of a task with and without Legato. A task is one request from you and everything Claude Code does to finish it.\n%s tasks from one month of one developer's Claude Code history (%s), at list prices, cache rebuilds included.",
-                          format(nrow(turns), big.mark = ","), window))
-save2x(p1, "cost-per-task.png", 12, 6.8)
+       title = "Most of the saving is in subagent runs and ordinary coding tasks; hard tasks pay a little to bring Opus back",
+       subtitle = sprintf("Mean cost of a task with and without Legato, at API list prices. A task is one request from you and everything Claude Code does to finish it.\n%s of the %s tasks in one month of one developer's Claude Code history (%s), cache rebuilds included.\nThe %d left out are in kinds too small to show.",
+                          format(shown, big.mark = ","), format(nrow(turns), big.mark = ","), window, left_out))
+save2x(p1, "cost-per-task.png", 13, 7)
 
 # Chart 2: the bill over the month, with and without.
 series <- as_tibble(d$series) %>% mutate(at = as.POSIXct(t / 1000, origin = "1970-01-01", tz = "UTC"))
@@ -91,8 +93,8 @@ p2 <- ggplot(cum, aes(at, usd, colour = which)) +
   scale_y_continuous(labels = dollar_format(accuracy = 1)) +
   theme_bk + theme(legend.position = "none") +
   labs(x = NULL, y = "Cumulative cost, at list prices",
-       title = sprintf("Over the month Legato would have saved %s, %.0f%% of the bill", dollar(saved_total, accuracy = 1), pct),
-       subtitle = sprintf("Every request in %d sessions and %d subagent runs replayed through Legato's decision engine, %s.\nThe gap is the saving after paying for every cache rebuild a switch caused.",
+       title = sprintf("Over the month Legato would have cut usage by %s, %.0f%% at API list prices", dollar(saved_total, accuracy = 1), pct),
+       subtitle = sprintf("Every request in %d sessions and %d subagent runs replayed through Legato's decision engine, %s.\nThe gap is the saving after paying for every cache rebuild a change of model caused. Most of the usage arrived on a few heavy days.",
                           tot$conversations, tot$subagents, window))
 save2x(p2, "bill-over-the-month.png", 12, 6)
 cat("wrote", file.path(fig, c("cost-per-task.png", "bill-over-the-month.png")), "\n")

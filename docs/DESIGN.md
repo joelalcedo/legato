@@ -13,8 +13,8 @@ The Claude API caches by exact prefix, per model. Claude Code re-sends the whole
 
 A cache write costs 25x a cache read on Opus and Sonnet 5.5. So a model switch on a large context is expensive, and the saving per request afterwards is small. Two consequences:
 
-1. Between Opus and Sonnet, the math decides. On a 150K context the rebuild on Sonnet costs about $0.35, against about $0.03 saved per request.
-2. Dropping to Haiku almost always pays. Haiku 5.5 writes are so cheap that even a 150K rebuild costs under $0.10, while each request afterwards saves about $0.05 on reads and output. Above 100K tokens of prompt, Haiku's prices multiply by five, which is why it is rarely chosen on long sessions.
+1. Between Opus and Sonnet, the arithmetic decides. On a 150K context the rebuild on Sonnet costs about $0.34, against about 3¢ saved per request (`legato explain --context 150000`).
+2. Dropping to Haiku pays on small prompts: its cache writes are so cheap that even a 150K rebuild costs under $0.10, and each later request saves about 5¢ on reads and output. Above 100K tokens of prompt Haiku's prices multiply by five, so on long conversations it is rarely chosen.
 
 Effort is different: on Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 5 and Fable 5.1, a per-turn effort change keeps the cache. So effort is the free gear and model is the expensive one.
 
@@ -23,17 +23,17 @@ Effort is different: on Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 5 and Fable 5.1, a
 For each `/v1/messages` request:
 
 1. Pass through if the request has no tools (Claude Code background calls such as titles) or is already on Haiku.
-2. Hold inside a tool loop: the last message only carries tool results. Switching here would rebuild the cache for one step. Claude Code's own prompts (the next-prompt suggestion after each turn, idle recaps, summaries) are held the same way.
+2. Legato changes nothing while a tool loop is running, that is, while the last message carries only tool results. Switching there would rebuild the cache for one step. Claude Code's own prompts (the next-prompt suggestion after each turn, idle recaps, summaries) are held the same way.
 3. Pick a target at a user turn:
    - `//h //s //o //f` override, else the classifier's tier and effort.
    - Plan mode floors at `planTier` (Opus).
    - If the previous task ended with `escalateAfterErrors` or more failing tool results, step one tier above the current model.
-   - A subagent's first request goes by its agent type when `subagentTiers` names it; a fork is never switched; a downshift that would discard more than `holdThinkingTokens` of the current model's thinking is held.
+   - A subagent's first request goes by its agent type when `subagentTiers` names it; a fork is never switched; a move to a cheaper model that would discard more than `holdThinkingTokens` of the current model's thinking is held.
    - Clamp to `[floor, ceiling]`; the default ceiling is the model Claude Code asked for.
-4. Gate the switch on cache economics (below). If a downshift doesn't pay, stay and apply the classifier's effort instead.
+4. Check the switch against the cache arithmetic (below). If a move to a cheaper model does not pay, stay and apply the classifier's effort instead.
 5. Rewrite: set the model, make parameters valid for it (drop `thinking: disabled` on always-thinking models, clamp `max_tokens`, clamp effort), strip the override prefix, and set the turn's effort.
 
-## Switch economics
+## Switch arithmetic
 
 Let `C` be the prompt size, `g` the expected growth per request (EWMA of observed growth), `o` the expected output per request (EWMA), and `r`, `w`, `out` the read, write and output prices of the current model (subscript `f`) and target (subscript `t`). `W` is the target's warm prefix if it served this conversation within the TTL, else 0.
 
@@ -55,7 +55,7 @@ Expected cost of coming back to the current model later after its cache expired:
 
     B = p_return · C · w_f
 
-Downshift when:
+Move to the cheaper model when:
 
     s · N − R − B ≥ minNetSavings
 
@@ -69,7 +69,7 @@ Claude Code attaches a `role: "system"` control message to each user turn, under
 
 Legato never edits that message. It appends its own effort-only message `{"role":"system","content":[],"output_config":{"effort":"low"}}` at the tail of every request whose effort differs from what Claude Code asked. Claude Code never sees the appended message, so each request's history is byte-identical to the previous request's prefix, and the proxy appends again. Nothing has to be remembered between requests, and a proxy restart changes nothing.
 
-The first live run set the effort on Claude Code's control message instead, when it was the tail. The cost showed up on the next request of each turn: one subagent read 5.6K of its 16.6K cached tokens, another 20.6K of 31.6K, while an agent whose effort was left alone read all of its 31.9K. Claude Code had re-sent its message with the original effort, so the edited copy broke the cached prefix at that point and about 11K tokens, the environment block and tool definitions, were written again. At Opus prices across the 613 effort changes a month in the evaluation data, that is about $55, as much as the effort changes were assumed to save.
+The first live run set the effort on Claude Code's control message instead, when it was the tail. The cost showed up on the next request of each turn: one subagent read 5.6K of its 16.6K cached tokens, another 20.6K of 31.6K, while an agent whose effort was left alone read all of its 31.9K. Claude Code had re-sent its message with the original effort, so the edited copy broke the cached prefix at that point and about 11K tokens, the environment block and tool definitions, were written again. At Opus's 1-hour cache write price of $8 per million tokens, across the 613 effort changes a month in the evaluation data, that is about $54, roughly what the effort changes were assumed to save ($58).
 
 An earlier version inserted effort messages into the history and tracked them in a ledger keyed by message index. It worked until Claude Code's control message moved between requests; the ledger's anchors then drifted and its entries were dropped silently. Editing only the tail removed that failure mode.
 

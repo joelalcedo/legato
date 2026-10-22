@@ -16,8 +16,8 @@ worth, divided by its size.
   costs about 11K tokens of cache writes per turn. No history edits, nothing to remember across
   requests or restarts.
 - Agent awareness: agent type read from the system prompt; Explore agents routed to Sonnet at
-  their first request; forks never switched; downshifts that would discard the current model's
-  thinking held.
+  their first request; forks never switched; moves to a cheaper model that would discard the
+  current model's thinking held.
 - Session state on disk, so a proxy restart mid-session does not re-route a conversation.
 - Status line per session, keyed by the `session_id` Claude Code sends in `metadata.user_id`,
   written in words.
@@ -34,7 +34,8 @@ worth, divided by its size.
 1. Run the trial on general-purpose subagents: `legato start --trial
    general-purpose=claude-sonnet-5-5/high:50` for two weeks, then compare arms on
    requests-to-finish, failing tool results per task, and how often the parent re-dispatches.
-   This is the only lever above about 15%, and the replay cannot measure it.
+   This is the only lever worth more than about 15% of a month's usage, and the replay cannot
+   measure it.
 2. Effort on subagents. They run at xhigh or max. Measure requests per task by effort level from
    the trial data before lowering it.
 3. Learn expected run length per user from their own transcripts instead of the
@@ -44,8 +45,8 @@ worth, divided by its size.
    general-purpose subagents only, in shadow first, measuring re-fetches.
 5. A learned router (RouteLLM-style) behind the same `classify()` interface, trained on the
    trial's outcomes.
-6. Release: publish to npm, record the demo, and put the measured trial result in the README as
-   the headline number.
+6. Release: publish to npm and put the measured trial result in the README as the headline
+   number.
 
 ## Not planned
 
