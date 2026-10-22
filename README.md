@@ -5,9 +5,10 @@
 Replayed on one developer's 30 days of real Claude Code sessions (51.9K API requests, $5.1K at list prices): per-turn routing that ignores the cache saved **2.9%** and paid **$752** in cache rebuilds. Cache-aware routing saved **9.9%** ($504; 12.7% in a month with Fable sessions) and paid **$82**.
 
 ```
-⇄ Sonnet 5.5 · medium ← Opus 5.5 · saved $0.84 over 12 turns        ← Claude Code status line, this session
-⇄ Opus 5.5 · medium (asked xhigh) · held: rebuild $0.97 · saved $0.31 over 7 turns
+⇄ running on Sonnet 5.5 at medium effort instead of Opus 5.5 · saved $0.84 over 12 turns
+⇄ running on Opus 5.5 at medium effort (asked xhigh) · switch held: rebuild $0.97 · saved $0.31 over 7 turns
 ```
+*Claude Code's status line, two sessions.*
 
 [Quick start](#quick-start) · [How it decides](#how-it-decides) · [Results](#results-on-real-usage) · [What's in the repo](#whats-in-the-repo) · [Design](docs/DESIGN.md) · [Evaluation](docs/EVALUATION.md) · [Roadmap](docs/ROADMAP.md)
 
@@ -53,12 +54,14 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
 
 # 3. Live.
 switchyard start
-ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
+ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model dynamic
 ```
 
 Dashboard: http://127.0.0.1:8787/switchyard. Decision log: `~/.switchyard/decisions.jsonl`.
 
-**Status line.** Claude Code's header keeps showing the model you launched with; the status line shows what this session is running on. In `~/.claude/settings.json`:
+**`--model dynamic`.** Claude Code's header names the model it was launched with and nothing outside the binary can change that line. `dynamic` is an alias the proxy resolves (`modelAliases` in the config; by default it means "route, up to Opus 5.5"), so the header reads `dynamic` instead of naming a model that isn't the one running. Launching with a real model name works too; the router treats it as the ceiling.
+
+**Status line.** The line at the bottom shows what this session is actually running on, in words. In `~/.claude/settings.json`:
 
 ```json
 "statusLine": { "type": "command", "command": "switchyard statusline" }
@@ -120,7 +123,7 @@ examples/          synthetic transcripts and the demo report
 
 - The analyzer holds output length constant across models and cannot see quality. Validate in shadow mode, then with a `trial`.
 - The default classifier is a transparent keyword heuristic; the Haiku classifier needs an API key because a subscription's OAuth token can't be used for other calls.
-- Claude Code's own header line cannot be changed from outside; use the status line.
+- Claude Code's own header line cannot be changed from outside. `--model dynamic` makes it say `dynamic`; the status line says what is running. Claude Code may treat an unknown model name conservatively (context window, output limit), which the live log will show.
 - Haiku 5.5 is rarely chosen on long sessions: its price multiplies by five above 100K tokens of prompt.
 
 ## Contributing and license

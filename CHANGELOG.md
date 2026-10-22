@@ -27,6 +27,11 @@
 - Requests Claude Code abandons are logged with status 499; upstream failures with 502.
 - Session state persists under `~/.switchyard/state`.
 - A per-session status file under `~/.switchyard/status` drives `switchyard statusline`.
+- The status line is written in words: `running on Sonnet 5.5 at medium effort instead of Opus 5.5 ·
+  saved $0.58 over 3 turns`; held switches show the rebuild cost.
+- `claude --model dynamic` (or `auto`, `switchyard`): the proxy resolves the alias to a ceiling model
+  (`modelAliases`), so Claude Code's header stops naming a model that isn't the one running. The
+  log records `forwarded: "aliased"` for requests that went as sent apart from the model name.
 - After a fail-open, neither the routed model nor the effort is recorded as having run.
 - Removed the stale 64K `max_tokens` clamp for Haiku 5.5.
 

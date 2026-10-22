@@ -47,6 +47,11 @@ export interface RouterConfig {
   /** Tier for a subagent's first request by agent type (read from its system prompt); the classifier decides otherwise. */
   subagentTiers: Partial<Record<string, Tier>>;
   /**
+   * Model names Claude Code may be launched with (`claude --model dynamic`) that stand for
+   * "let the router choose, up to this model". Claude Code's header then shows the alias.
+   */
+  modelAliases: Record<string, string>;
+  /**
    * Hold a downshift that would discard more than this many tokens of the current model's
    * thinking, which the cheaper model can't read; effort is adjusted instead.
    */
@@ -102,6 +107,7 @@ const BASE: RouterConfig = {
   switchMidLoop: false,
   planTier: 'opus',
   subagentTiers: { Explore: 'sonnet' },
+  modelAliases: { dynamic: 'claude-opus-5-5', auto: 'claude-opus-5-5', switchyard: 'claude-opus-5-5' },
   holdThinkingTokens: 20_000,
   classifier: 'heuristic',
   classifierModel: 'claude-haiku-5-5',
@@ -143,6 +149,7 @@ function mergeConfig(base: RouterConfig, patch: Partial<RouterConfig>): RouterCo
   if (patch.tierEffort) out.tierEffort = { ...base.tierEffort, ...patch.tierEffort };
   if (patch.maxOutputTokens) out.maxOutputTokens = { ...base.maxOutputTokens, ...patch.maxOutputTokens };
   if (patch.subagentTiers) out.subagentTiers = { ...base.subagentTiers, ...patch.subagentTiers };
+  if (patch.modelAliases) out.modelAliases = { ...base.modelAliases, ...patch.modelAliases };
   if (patch.effortOutputScale) out.effortOutputScale = { ...base.effortOutputScale, ...patch.effortOutputScale };
   return out;
 }

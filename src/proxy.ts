@@ -83,6 +83,8 @@ interface Outcome {
   failOpen: boolean;
   ranOn: string;
   live: boolean;
+  /** The model name Claude Code sent when it was an alias (`dynamic`), resolved before routing. */
+  alias?: string;
 }
 
 export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
@@ -124,6 +126,11 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     } catch {
       return passthrough(req, res, raw);
     }
+    // `claude --model dynamic`: the alias means "route it, up to this model". The API has never
+    // heard of it, so the forwarded body carries the real name even when nothing else changes.
+    const alias = cfg.modelAliases[original.model] ? original.model : undefined;
+    if (alias) original = { ...original, model: cfg.modelAliases[alias]! };
+    const sent = alias ? Buffer.from(JSON.stringify(original)) : raw;
     const t0 = now();
     const features = extractFeatures(original);
     const session = sessions.get(original, t0);
@@ -141,7 +148,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       if (!res.writableEnded) abort.abort();
     });
 
-    const outcome: Outcome = { usage: {}, status: 0, failOpen: false, ranOn: sendBody.model, live };
+    const outcome: Outcome = { usage: {}, status: 0, failOpen: false, ranOn: sendBody.model, live, alias };
     const tap = new UsageTap();
     const classifier = classification ? cfg.classifierModel : undefined;
     try {
@@ -149,7 +156,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         method: 'POST',
         headers: forwardHeaders(req, sendBetas),
         // Unless a rewrite is live, forward Claude Code's bytes exactly as sent.
-        body: live ? JSON.stringify(sendBody) : new Uint8Array(raw),
+        body: live ? JSON.stringify(sendBody) : new Uint8Array(sent),
         signal: abort.signal,
       });
 
@@ -161,7 +168,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         upstreamRes = await fetch(upstream + req.url, {
           method: 'POST',
           headers: forwardHeaders(req),
-          body: new Uint8Array(raw),
+          body: new Uint8Array(sent),
           signal: abort.signal,
         });
       }
@@ -209,7 +216,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     decision: Decision,
     rewrite: Rewrite | undefined,
     features: Features,
-    { usage, status, failOpen, ranOn, live }: Outcome,
+    { usage, status, failOpen, ranOn, live, alias }: Outcome,
     t: number,
     classifier: string | undefined,
   ): void {
@@ -269,7 +276,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       costUsd,
       baselineUsd,
       status,
-      forwarded: live && !failOpen ? 'rewritten' : 'original',
+      forwarded: live && !failOpen ? 'rewritten' : alias ? 'aliased' : 'original',
+      alias,
       ranOn,
       failOpen: failOpen || undefined,
       reasons: decision.reasons,
@@ -299,6 +307,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         model: entry.routed,
         effort: entry.effort,
         incomingEffort: features.incomingEffort,
+        alias,
         switched: entry.switched,
         reason: decision.reasons[0] ?? '',
         ...totals,

@@ -259,6 +259,27 @@ describe('proxy end to end', () => {
     assert.ok(proxy.stats.recent[0]!.costUsd < proxy.stats.recent[0]!.baselineUsd);
   });
 
+  it('resolves a launch alias such as --model dynamic before routing and never forwards it upstream', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'sy-alias-'));
+    await start({ dataDir }, true);
+    // A background request (no tools) goes as sent, apart from the model name the API would reject.
+    await send({ model: 'dynamic', tools: [], messages: [user('hi')] });
+    assert.equal(seen[0]!.body.model, 'claude-opus-5-5');
+    // A routable turn is priced against the alias target and routed from there.
+    await send({ model: 'dynamic', messages: [user('rename a to b'), control('xhigh')] });
+    assert.equal(seen[1]!.body.model, 'claude-haiku-5-5');
+    const status = readSessionStatus(dataDir, SESSION)!;
+    assert.equal(status.alias, 'dynamic');
+    assert.equal(status.incoming, 'claude-opus-5-5');
+    assert.equal(status.model, 'claude-haiku-5-5');
+    // Shadow mode too.
+    await start({ mode: 'shadow' });
+    await send({ model: 'dynamic', messages: [user('rename a to b'), control('xhigh')] });
+    assert.equal(seen[0]!.body.model, 'claude-opus-5-5');
+    assert.equal(proxy.stats.recent[0]!.forwarded, 'aliased');
+    assert.equal(proxy.stats.recent[0]!.routed, 'claude-haiku-5-5');
+  });
+
   it("writes a status file for the session's main thread and keeps session state across a restart", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'sy-data-'));
     await start({ dataDir }, true);

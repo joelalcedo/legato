@@ -11,7 +11,7 @@ import { extractFeatures, type MessagesRequest } from './features.js';
 import { usd } from './html.js';
 import type { Effort } from './models.js';
 import { startProxy } from './proxy.js';
-import { readSessionStatus, readStats, type SessionStatus } from './stats.js';
+import { displayName, formatStatus, readSessionStatus, readStats } from './stats.js';
 
 const HELP = `switchyard: cache-aware model routing for Claude Code
 
@@ -19,7 +19,10 @@ Usage
   switchyard start [--port 8787] [--mode live|shadow] [--preset balanced] [--ttl 300]
                    [--classifier heuristic|haiku] [--trial <agentType>=<model>[/<effort>][:<share%>]]
       Run the routing proxy. Then, in another terminal:
-        ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model opus
+        ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude --model dynamic
+      "dynamic" is an alias the proxy resolves (modelAliases in config.json; default: route up to
+      Opus 5.5), so Claude Code's header says "dynamic" instead of naming one model. Launching
+      with a real model name works too; the router then treats it as the ceiling.
       Dashboard: http://127.0.0.1:8787/switchyard
       --classifier haiku asks Haiku 5.5 to classify each user turn (needs ANTHROPIC_API_KEY).
       --trial general-purpose=claude-sonnet-5-5/high:50 routes half of those subagents to
@@ -99,28 +102,6 @@ function readStdinJson(): Record<string, unknown> {
   }
 }
 
-function displayName(model: string): string {
-  const m = /claude-(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d+))?/.exec(model);
-  if (!m) return model;
-  return `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}${m[3] ? '.' + m[3] : ''}`;
-}
-
-/** One line, under 80 characters where it can be: what this session runs on and why. */
-export function formatStatus(s: SessionStatus): string {
-  const saved = s.baselineUsd - s.costUsd;
-  let model = displayName(s.model) + (s.effort ? ` · ${s.effort}` : '');
-  if (s.model !== s.incoming) model += ` ← ${displayName(s.incoming)}`;
-  else if (s.effort && s.incomingEffort && s.effort !== s.incomingEffort) model += ` (asked ${s.incomingEffort})`;
-  let why = '';
-  if (s.reason.startsWith('hold ')) {
-    const rebuild = /rebuild \$([\d.]+)/.exec(s.reason);
-    const thinking = /drop ~(\d+K) tokens/.exec(s.reason);
-    why = thinking ? ` · held: ${thinking[1]} of thinking` : rebuild ? ` · held: rebuild $${Number(rebuild[1]).toFixed(2)}` : ' · held';
-  }
-  const verb = s.mode === 'shadow' ? 'would save' : 'saved';
-  return `⇄ ${s.mode === 'shadow' ? 'shadow · ' : ''}${model}${why} · ${verb} ${usd(saved)} over ${s.turns} turn${s.turns === 1 ? '' : 's'}`;
-}
-
 function parseSince(v: string | undefined): number | undefined {
   if (!v) return undefined;
   const m = /^(\d+)([dh])$/.exec(v);
@@ -141,7 +122,7 @@ async function main(): Promise<void> {
       const p = await startProxy({ cfg });
       process.stderr.write(
         `switchyard ${cfg.mode} on ${p.url} -> ${cfg.upstream} (preset ${cfg.preset}, TTL ${cfg.cacheTtlSeconds}s)\n` +
-          `  run:        ANTHROPIC_BASE_URL=${p.url} claude --model opus\n` +
+          `  run:        ANTHROPIC_BASE_URL=${p.url} claude --model dynamic\n` +
           `  dashboard:  ${p.url}/switchyard\n`,
       );
       const stop = () => p.close().then(() => process.exit(0));

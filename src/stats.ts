@@ -18,7 +18,9 @@ export interface DecisionLogEntry {
   baselineUsd: number;
   status: number;
   /** What went upstream: Claude Code's request byte for byte, or the routed rewrite. */
-  forwarded: 'original' | 'rewritten';
+  /** `aliased`: the bytes went as sent except for the model name, which was a launch alias. */
+  forwarded: 'original' | 'rewritten' | 'aliased';
+  alias?: string;
   /** Model the upstream request named. */
   ranOn: string;
   failOpen?: boolean;
@@ -45,6 +47,8 @@ export interface SessionStatus {
   model: string;
   effort?: string;
   incomingEffort?: string;
+  /** The model name Claude Code was launched with when it is an alias such as `dynamic`. */
+  alias?: string;
   switched: boolean;
   /** The engine's first reason, which names a hold or a switch. */
   reason: string;
@@ -52,6 +56,40 @@ export interface SessionStatus {
   requests: number;
   costUsd: number;
   baselineUsd: number;
+}
+
+export function displayName(model: string): string {
+  const m = /claude-(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d+))?/.exec(model);
+  if (!m) return model;
+  return `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}${m[3] ? '.' + m[3] : ''}`;
+}
+
+/**
+ * One line for Claude Code's status line, in words: what this session is running on, how that
+ * differs from what Claude Code asked for, and what it has saved so far.
+ *
+ *   ⇄ running on Sonnet 5.5 at medium effort instead of Opus 5.5 · saved $0.57 over 3 turns
+ *   ⇄ running on Opus 5.5 at medium effort (asked xhigh) · switch held: rebuild $0.97 · saved $0.31 over 7 turns
+ *   ⇄ dynamic: running on Haiku 5.5 at low effort · saved $0.70 over 1 turn
+ */
+export function formatStatus(s: SessionStatus): string {
+  const saved = s.baselineUsd - s.costUsd;
+  const shadow = s.mode === 'shadow';
+  let line = `⇄ ${s.alias ? s.alias + ': ' : ''}${shadow ? 'shadow: would run' : 'running'} on ${displayName(s.model)}`;
+  if (s.effort) line += ` at ${s.effort} effort`;
+  // With an alias the user delegated the choice, so there is nothing to compare against.
+  if (s.alias) {
+    // nothing
+  } else if (s.model !== s.incoming) line += ` instead of ${displayName(s.incoming)}`;
+  else if (s.effort && s.incomingEffort && s.effort !== s.incomingEffort) line += ` (asked ${s.incomingEffort})`;
+  else line += ', as asked';
+  if (s.reason.startsWith('hold ')) {
+    const rebuild = /rebuild \$([\d.]+)/.exec(s.reason);
+    const thinking = /drop ~(\d+K) tokens/.exec(s.reason);
+    line += thinking ? ` · switch held: ${thinking[1]} of thinking` : rebuild ? ` · switch held: rebuild $${Number(rebuild[1]).toFixed(2)}` : ' · switch held';
+  }
+  const turns = `${s.turns} turn${s.turns === 1 ? '' : 's'}`;
+  return `${line} · ${shadow ? 'would save' : 'saved'} $${saved.toFixed(2)} over ${turns}`;
 }
 
 const SESSION_ID_RE = /^[0-9A-Za-z_-]{1,80}$/;
