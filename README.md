@@ -18,7 +18,7 @@ Easy turns run on Haiku, normal ones on Sonnet, hard ones on Opus. Legato switch
 
 ## What it saves
 
-**9.9%** on 30 days of one developer's real Claude Code history, and 12.7% in a month with Fable sessions. Routing that ignores the cache saved 2.9% and paid $752 in cache rebuilds. Numbers and caveats: [docs/EVALUATION.md](docs/EVALUATION.md).
+9.9% on 30 days of one developer's real Claude Code history, and 12.7% in a month with Fable sessions. Routing that ignores the cache saved 2.9% and paid $752 in cache rebuilds. Numbers and caveats: [docs/EVALUATION.md](docs/EVALUATION.md).
 
 Your own number, from your own transcripts. Nothing leaves your machine:
 
