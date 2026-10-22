@@ -63,8 +63,9 @@
 - Agent type and fork flag read from each subagent's `.meta.json`.
 
 ### Docs
-- README: the definition, a demo GIF rendered from real `legato explain` output
-  (`scripts/demo`), quick start, how it works, and two charts of what tasks cost with and without
-  Legato. `docs/REFERENCE.md` holds the commands, options and limitations.
+- README: the definition, a demo film (`scripts/video`, a HyperFrames composition: a real session
+  replayed from the decision log with callouts, then the month's chart drawing itself), quick
+  start, how it works, and two charts of what tasks cost with and without Legato.
+  `docs/REFERENCE.md` holds the commands, options and limitations.
 - `.claude/agents/plain-english-reviewer.md`: an adversarial reviewer (English teacher and
   economist) for everything a person reads, including the CLI's own sentences.

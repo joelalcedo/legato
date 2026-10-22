@@ -6,9 +6,9 @@ Legato runs Claude Code and chooses, for each task, which Claude model answers a
 
 ## Demo
 
-![legato explain: the same prompt switches to Sonnet on a small conversation and stays on Opus on a large one](docs/demo.gif)
+![A Claude Code session running through Legato: the header says Dynamic mode, the status line says which model each task ran on and what it saved](docs/demo.gif)
 
-Three decisions, explained on the command line. For the same prompt, Legato switches to Sonnet when the conversation is 25K tokens long, and stays on Opus at a lower effort when it is 180K tokens long, because rebuilding Sonnet's cache would cost $0.39 more than Sonnet would save. A hard prompt keeps Opus at the effort you set.
+A real session, replayed from Legato's log. A greeting goes to Sonnet, a four-stage task with three subagents goes back to Opus, and a question afterwards goes to Sonnet again because Opus's cache had expired. The status line at the bottom says what ran and what it saved. Then one month of real use, replayed. The same film as video: [docs/demo.mp4](docs/demo.mp4).
 
 ## Quick start
 

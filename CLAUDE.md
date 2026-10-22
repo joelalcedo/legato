@@ -12,7 +12,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `node dist/cli.js explain "<prompt>" --context 150000`: inspect one decision
 - `node dist/cli.js analyze --since 30d`: replay real `~/.claude/projects` transcripts (about 35s for 30 days); `--json` adds per-task records and the cost series
 - `Rscript scripts/charts.R analyze.json docs/img`: the README charts (ggplot2, house style from the alcyone research charts)
-- `/usr/bin/python3 scripts/demo/make_gif.py scripts/demo/demo.json docs/demo.gif`: the README GIF, from the captured `explain` output in `scripts/demo/`
+- `cd scripts/video && npx hyperframes render --quality looks --output ../../docs/demo.mp4`: the README demo (a HyperFrames composition; the session scene replays a real session from the decision log). Then the ffmpeg line in CONTRIBUTING.md for the GIF.
 
 ## Layout
 

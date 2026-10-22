@@ -1,0 +1,70 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-display, Inter, sans-serif);
+      color: var(--ink, #e6edf3);
+    }
+    #t-stage {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    #t-name {
+      font-size: 150px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+    #t-line {
+      margin-top: 34px;
+      font-size: 40px;
+      font-weight: 500;
+      color: var(--ink, #e6edf3);
+      letter-spacing: -0.01em;
+    }
+    #t-line .w {
+      display: inline-block;
+      margin-right: 0.28em;
+    }
+    #t-def {
+      margin-top: 30px;
+      max-width: 1180px;
+      font-size: 30px;
+      font-style: italic;
+      line-height: 1.4;
+      color: var(--ink-dim, #9aa4b2);
+    }
+  </style>
+  <div id="root" data-composition-id="title" data-width="1920" data-height="1080">
+    <div id="t-stage" class="clip" data-start="0" data-duration="5" data-track-index="0">
+      <div id="t-name">Legato</div>
+      <div id="t-line">
+        <span class="w">Claude</span><span class="w">Code,</span><span class="w">with</span><span class="w">the</span><span class="w">model</span><span class="w">and</span><span class="w">effort</span><span class="w">picked</span><span class="w">for</span><span class="w">every</span><span class="w">task.</span>
+      </div>
+      <div id="t-def">
+        Legato, in music: tied together, with no silence or gap between the notes.
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#t-name", { opacity: 1, filter: "blur(0px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.1, ease: "none" }, 0);
+      tl.fromTo(
+        "#t-line .w",
+        { opacity: 0, filter: "blur(6px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.13, stagger: 0.067, ease: "power2.out" },
+        0.4,
+      );
+      tl.fromTo("#t-def", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 1.2);
+      tl.to(["#t-name", "#t-line", "#t-def"], { opacity: 0, filter: "blur(8px)", duration: 0.25, ease: "power3.in" }, 4.7);
+      window.__timelines["title"] = tl;
+    })();
+  </script>
+</template>

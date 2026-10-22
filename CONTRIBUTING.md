@@ -38,22 +38,25 @@ legato analyze --since 2026-09-21 --json > /tmp/analyze.json
 Rscript scripts/charts.R /tmp/analyze.json docs/img
 ```
 
-## Recording the demo
+## The demo video
 
-`docs/demo.gif` is rendered, not screen-captured, so that every line in it is real output of the
-build it ships with. `scripts/demo/demo.json` lists the commands; the `out*.txt` files next to it
-are their captured output.
+`docs/demo.gif` and `docs/demo.mp4` are rendered from `scripts/video`, a [HyperFrames](https://github.com/heygen-com/hyperframes)
+composition: HTML and GSAP, rendered frame by frame in headless Chrome, so every render is the same.
+The session scene replays a real Legato session from the decision log (the models, the effort,
+the rebuild cost and the savings are the logged numbers; the assistant's replies are abridged), and
+the chart scene draws the cumulative series from `legato analyze --json`.
 
 ```bash
-npm run build
-node dist/cli.js explain "add a loading state to the table" --context 25000 --effort xhigh > scripts/demo/out1.txt
-node dist/cli.js explain "add a loading state to the table" --context 180000 --effort xhigh > scripts/demo/out2.txt
-node dist/cli.js explain "Why does the ball tunnel through the paddle at high speed? Explain the trade-offs between the fixes and implement the most robust one" --context 180000 --effort xhigh > scripts/demo/out3.txt
-/usr/bin/python3 scripts/demo/make_gif.py scripts/demo/demo.json docs/demo.gif
+cd scripts/video
+npx hyperframes check --json            # lint, layout, motion
+npx hyperframes snapshot --at 9,20,34,50  # look before rendering
+npx hyperframes render --quality looks --output ../../docs/demo.mp4
+ffmpeg -y -i ../../docs/demo.mp4 -vf "fps=12,scale=1120:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" ../../docs/demo.gif
 ```
 
-The renderer needs Pillow and the Menlo font (both on macOS). Re-render whenever the wording of
-`explain` changes.
+Needs Node 22+ and ffmpeg. To change the session, edit the lines and the timings in
+`compositions/session.html`; to refresh the chart, regenerate `compositions/series.js` from the
+`series` field of `analyze --json` (300 points is plenty).
 
 ## Reporting a transcript the reader gets wrong
 

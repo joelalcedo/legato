@@ -1,0 +1,297 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: var(--font-display, Inter, sans-serif);
+      color: var(--ink, #e6edf3);
+    }
+    #c-stage {
+      position: absolute;
+      inset: 0;
+    }
+    #c-title {
+      position: absolute;
+      left: 120px;
+      top: 86px;
+      font-size: 52px;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      line-height: 1.15;
+      opacity: 0;
+    }
+    #c-sub {
+      position: absolute;
+      left: 120px;
+      top: 160px;
+      font-size: 26px;
+      color: var(--ink-dim, #9aa4b2);
+      opacity: 0;
+    }
+    #c-svg {
+      position: absolute;
+      inset: 0;
+    }
+    .grid {
+      stroke: #222a35;
+      stroke-width: 1.5;
+    }
+    .axis-label {
+      font-size: 26px;
+      fill: #8b949e;
+      font-family: var(--font-display, Inter, sans-serif);
+    }
+    .series {
+      fill: none;
+      stroke-width: 6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    #c-base {
+      stroke: #c9d1d9;
+    }
+    #c-legato {
+      stroke: var(--accent, #4c8ef7);
+    }
+    #c-gapfill {
+      fill: var(--accent, #4c8ef7);
+      opacity: 0;
+    }
+    .endlab {
+      position: absolute;
+      font-size: 30px;
+      font-weight: 600;
+      white-space: nowrap;
+      opacity: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .endlab small {
+      display: block;
+      font-size: 22px;
+      font-weight: 500;
+      color: var(--ink-dim, #9aa4b2);
+    }
+    #c-lab-base {
+      color: #c9d1d9;
+    }
+    #c-lab-legato {
+      color: var(--accent, #4c8ef7);
+    }
+    #c-saved {
+      position: absolute;
+      left: 1420px;
+      top: 250px;
+      width: 420px;
+      padding: 26px 32px;
+      border-radius: 18px;
+      background: rgba(22, 27, 34, 0.94);
+      border: 1px solid #30363d;
+      opacity: 0;
+    }
+    #c-saved .big {
+      font-size: 74px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--green, #3fb950);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    #c-saved .small {
+      margin-top: 10px;
+      font-size: 26px;
+      color: var(--ink, #e6edf3);
+      line-height: 1.35;
+    }
+    #c-break {
+      position: absolute;
+      left: 1420px;
+      top: 520px;
+      width: 420px;
+      font-size: 24px;
+      line-height: 1.3;
+    }
+    #c-break .h {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent, #4c8ef7);
+      margin-bottom: 14px;
+      opacity: 0;
+    }
+    #c-break .row {
+      display: grid;
+      grid-template-columns: 1fr 86px;
+      align-items: center;
+      column-gap: 12px;
+      margin-bottom: 14px;
+      opacity: 0;
+    }
+    #c-break .row .lab {
+      grid-column: 1 / 3;
+      color: var(--ink, #e6edf3);
+      font-variant-numeric: tabular-nums;
+    }
+    #c-break .row .lab small {
+      color: var(--ink-dim, #9aa4b2);
+      font-size: 20px;
+    }
+    #c-break .bar {
+      height: 10px;
+      border-radius: 5px;
+      background: var(--green, #3fb950);
+      transform-origin: left center;
+    }
+    #c-break .bar.neg {
+      background: #f85149;
+    }
+    #c-break .val {
+      text-align: right;
+      font-weight: 600;
+      color: var(--green, #3fb950);
+      font-variant-numeric: tabular-nums;
+    }
+    #c-break .val.neg {
+      color: #f85149;
+    }
+    #c-source {
+      position: absolute;
+      left: 120px;
+      top: 980px;
+      font-size: 22px;
+      color: #6e7681;
+      opacity: 0;
+    }
+  </style>
+  <div id="root" data-composition-id="chart" data-width="1920" data-height="1080">
+    <div id="c-stage" class="clip" data-start="0" data-duration="12" data-track-index="0" data-layout-allow-overlap>
+      <div id="c-title">One month of real Claude Code use, replayed through Legato</div>
+      <div id="c-sub">Cumulative usage at API list prices, 21 Sep to 22 Oct 2026: 280 sessions, 446 subagent runs, 52,217 requests</div>
+      <svg id="c-svg" viewBox="0 0 1920 1080">
+        <g id="c-grid"></g>
+        <g id="c-xlabels"></g>
+        <path id="c-gapfill" d="" />
+        <path id="c-base" class="series" d="" />
+        <path id="c-legato" class="series" d="" />
+      </svg>
+      <div class="endlab" id="c-lab-base"><small>Claude Code alone</small><span id="c-num-base">$0</span></div>
+      <div class="endlab" id="c-lab-legato"><small>With Legato</small><span id="c-num-legato">$0</span></div>
+      <div id="c-saved">
+        <div class="big" id="c-num-saved">$0</div>
+        <div class="small">saved, 10% of the bill,<br />after paying for every cache rebuild</div>
+      </div>
+      <div id="c-break">
+        <div class="h" id="c-break-h">Where the saving comes from</div>
+        <div class="row" id="br-1"><div class="lab">General-purpose agent runs <small>338</small></div><div class="bar" id="bar-1"></div><div class="val">$271</div></div>
+        <div class="row" id="br-2"><div class="lab">Ordinary coding tasks <small>703</small></div><div class="bar" id="bar-2"></div><div class="val">$242</div></div>
+        <div class="row" id="br-3"><div class="lab">Explore agent runs <small>26</small></div><div class="bar" id="bar-3"></div><div class="val">$31</div></div>
+        <div class="row" id="br-4"><div class="lab">Quick tasks <small>13</small></div><div class="bar" id="bar-4"></div><div class="val">$28</div></div>
+        <div class="row" id="br-5"><div class="lab">Hard tasks, bringing Opus back <small>452</small></div><div class="bar neg" id="bar-5"></div><div class="val neg">-$47</div></div>
+      </div>
+      <div id="c-source">Source: legato analyze --since 2026-09-21 on one developer's ~/.claude/projects. Dollars are list-price usage on a Max subscription.</div>
+    </div>
+  </div>
+  <script src="compositions/series.js"></script>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const NS = "http://www.w3.org/2000/svg";
+      const A = { x: 160, y: 250, w: 1000, h: 640 }; // plot rectangle
+      const pts = SERIES; // [unix seconds, cumulative without, cumulative with]
+      const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+      const maxY = 5500;
+      const px = (t) => A.x + ((t - t0) / (t1 - t0)) * A.w;
+      const py = (v) => A.y + A.h - (v / maxY) * A.h;
+
+      // grid and labels
+      const grid = document.getElementById("c-grid");
+      const xl = document.getElementById("c-xlabels");
+      for (let v = 0; v <= 5000; v += 1000) {
+        const l = document.createElementNS(NS, "line");
+        l.setAttribute("class", "grid");
+        l.setAttribute("x1", A.x); l.setAttribute("x2", A.x + A.w);
+        l.setAttribute("y1", py(v)); l.setAttribute("y2", py(v));
+        grid.appendChild(l);
+        const t = document.createElementNS(NS, "text");
+        t.setAttribute("class", "axis-label");
+        t.setAttribute("x", A.x - 16); t.setAttribute("y", py(v) + 8);
+        t.setAttribute("text-anchor", "end");
+        t.textContent = "$" + v.toLocaleString("en-US");
+        grid.appendChild(t);
+      }
+      const days = [["21 Sep", Date.UTC(2026, 8, 21)], ["28 Sep", Date.UTC(2026, 8, 28)], ["5 Oct", Date.UTC(2026, 9, 5)], ["12 Oct", Date.UTC(2026, 9, 12)], ["19 Oct", Date.UTC(2026, 9, 19)]];
+      days.forEach(([lab, ms]) => {
+        const t = document.createElementNS(NS, "text");
+        t.setAttribute("class", "axis-label");
+        t.setAttribute("x", px(ms / 1000)); t.setAttribute("y", A.y + A.h + 40);
+        t.setAttribute("text-anchor", "middle");
+        t.textContent = lab;
+        xl.appendChild(t);
+      });
+
+      // paths
+      const dBase = pts.map((p, i) => (i ? "L" : "M") + px(p[0]).toFixed(1) + " " + py(p[1]).toFixed(1)).join(" ");
+      const dLeg = pts.map((p, i) => (i ? "L" : "M") + px(p[0]).toFixed(1) + " " + py(p[2]).toFixed(1)).join(" ");
+      const base = document.getElementById("c-base");
+      const leg = document.getElementById("c-legato");
+      base.setAttribute("d", dBase);
+      leg.setAttribute("d", dLeg);
+      const gap = document.getElementById("c-gapfill");
+      gap.setAttribute("d", dBase + " " + pts.slice().reverse().map((p) => "L" + px(p[0]).toFixed(1) + " " + py(p[2]).toFixed(1)).join(" ") + " Z");
+
+      // end labels sit at the line ends
+      const last = pts[pts.length - 1];
+      const lb = document.getElementById("c-lab-base");
+      const ll = document.getElementById("c-lab-legato");
+      lb.style.left = px(last[0]) + 18 + "px"; lb.style.top = py(last[1]) - 44 + "px";
+      ll.style.left = px(last[0]) + 18 + "px"; ll.style.top = py(last[2]) + 2 + "px";
+
+      // timeline
+      tl.fromTo("#c-title", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.35, ease: "power4.out" }, 0.1);
+      tl.fromTo("#c-sub", { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, 0.35);
+      tl.fromTo(["#c-grid", "#c-xlabels"], { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.out" }, 0.4);
+
+      const DRAW = 2.6;
+      [base, leg].forEach((p, i) => {
+        const len = p.getTotalLength();
+        tl.fromTo(p, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration: DRAW, ease: "power1.inOut" }, 0.8 + i * 0.12);
+      });
+      // the gap between the lines fills as the draw finishes
+      tl.fromTo("#c-gapfill", { opacity: 0 }, { opacity: 0.18, duration: 0.6, ease: "power2.out" }, 0.8 + DRAW - 0.3);
+
+      // the end labels count up over the draw
+      const counters = [
+        { sel: "#c-num-base", to: 5166, at: 0.8, dur: DRAW },
+        { sel: "#c-num-legato", to: 4637, at: 0.92, dur: DRAW },
+      ];
+      counters.forEach((c) => {
+        const el = document.querySelector(c.sel);
+        const o = { v: 0 };
+        tl.to(o, { v: c.to, duration: c.dur, ease: "power1.inOut", onUpdate: () => (el.textContent = "$" + Math.round(o.v).toLocaleString("en-US")) }, c.at);
+      });
+      tl.fromTo("#c-lab-base", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 0.9);
+      tl.fromTo("#c-lab-legato", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 1.0);
+
+      // the saving lands, then holds
+      const so = { v: 0 };
+      const saved = document.getElementById("c-num-saved");
+      tl.fromTo("#c-saved", { opacity: 0, y: 16, filter: "blur(8px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0.8 + DRAW + 0.2);
+      tl.to(so, { v: 529, duration: 1.3, ease: "power3.out", onUpdate: () => (saved.textContent = "$" + Math.round(so.v)) }, 0.8 + DRAW + 0.25);
+      // where the saving comes from: one row at a time, each bar growing to its share of the biggest
+      const bars = [[1, 271], [2, 242], [3, 31], [4, 28], [5, 47]];
+      const T0 = 0.8 + DRAW + 1.6;
+      tl.fromTo("#c-break-h", { opacity: 0 }, { opacity: 1, duration: 0.3 }, T0);
+      bars.forEach(([i, v], k) => {
+        const at = T0 + 0.3 + k * 0.9;
+        tl.fromTo("#br-" + i, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, at);
+        tl.fromTo("#bar-" + i, { scaleX: 0.02 }, { scaleX: Math.max(0.04, v / 271), duration: 0.7, ease: "power4.out" }, at + 0.1);
+      });
+      tl.fromTo("#c-source", { opacity: 0 }, { opacity: 1, duration: 0.4 }, T0 + 5.2);
+
+      // leave
+      tl.to("#c-stage > *", { opacity: 0, filter: "blur(8px)", duration: 0.3, ease: "power3.in" }, 11.65);
+
+      window.__timelines["chart"] = tl;
+    })();
+  </script>
+</template>

@@ -67,7 +67,7 @@ src/
   pricing.ts       list prices        models.ts   what each model supports
   analyzer/        transcript reader, replay, text and HTML reports
 test/              engine, request-bytes stability, proxy end to end against a mock API, analyzer, status line
-scripts/           charts.R (the README charts, from `analyze --json`), demo/ (the README GIF)
+scripts/           charts.R (the README charts, from `analyze --json`), video/ (the README demo, a HyperFrames composition)
 docs/              DESIGN.md (the arithmetic), EVALUATION.md (real data), ROADMAP.md, PITCH.md
 examples/          synthetic transcripts and the demo report
 .claude/agents/    plain-english-reviewer: the adversarial reviewer for everything a person reads

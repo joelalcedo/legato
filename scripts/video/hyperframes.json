@@ -1,0 +1,44 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
+  "registry": "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry",
+  "paths": {
+    "blocks": "compositions",
+    "components": "compositions/components",
+    "assets": "assets"
+  },
+  "media": {
+    "autoProxy": true
+  },
+  "registryItems": [
+    {
+      "name": "terminal-simulator",
+      "type": "hyperframes:component",
+      "target": "compositions/components/terminal-simulator.html"
+    },
+    {
+      "name": "streaming-text",
+      "type": "hyperframes:component",
+      "target": "compositions/components/streaming-text.html"
+    },
+    {
+      "name": "hw-arrow",
+      "type": "hyperframes:component",
+      "target": "compositions/components/hw-arrow.html"
+    },
+    {
+      "name": "hw-callout-circle",
+      "type": "hyperframes:component",
+      "target": "compositions/components/hw-callout-circle.html"
+    },
+    {
+      "name": "mk-line-graph",
+      "type": "hyperframes:block",
+      "target": "compositions/mk-line-graph.html"
+    },
+    {
+      "name": "count-up",
+      "type": "hyperframes:component",
+      "target": "compositions/components/count-up.html"
+    }
+  ]
+}
