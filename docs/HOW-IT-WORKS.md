@@ -12,7 +12,7 @@ Each model has its own prompt cache. Switching the main model mid-conversation r
 
 One `decide()` function, called by both the proxy and the analyzer.
 
-Effort is adjusted on every turn, and it is free. Claude Code attaches a control message carrying the turn's effort to each user turn. Legato sets the effort on that message when it is the request's tail, and otherwise appends an effort-only message at the tail. Either way the user and assistant history is untouched, so the cached prefix and preserved thinking blocks stay valid. A mechanical turn on Opus runs at `medium` instead of `xhigh`; a hard one keeps the user's setting. This is the only lever that works on a long main thread.
+Effort is adjusted on every turn, and it is free. Legato appends a small effort-only message at the tail of the request, under the per-turn-control beta Claude Code already uses. It never edits Claude Code's own messages, so the cached prefix and preserved thinking blocks stay valid. A mechanical turn on Opus runs at `medium` instead of `xhigh`; a hard one keeps the user's setting. This is the only lever that works on a long main thread.
 
 The model changes only at cache boundaries. A switch happens at a user turn, never inside a tool loop, and only when it is free or pays:
 
@@ -45,7 +45,7 @@ The status line is what shows the routed model. `legato` adds it to `~/.claude/s
 
 ## Safety properties
 
-- Nothing is inserted into history. Effort is set on Claude Code's own control message or on a message appended at the tail. No ledger, no prefix edits, nothing lost on a proxy restart.
+- Nothing is inserted into history and none of Claude Code's messages are edited. Effort is set on a message appended at the tail. No ledger, no prefix edits, nothing lost on a proxy restart.
 - Fail-open: if the API rejects a rewritten request (400, 404, 422, 529), the proxy retries once with exactly what Claude Code sent, and records that it ran as sent.
 - No mid-loop switches. Thinking and cache stay with the model that produced them.
 - Shadow mode forwards Claude Code's request bytes untouched and logs `forwarded: "original"` on every entry, so "nothing was rewritten" is checkable line by line.

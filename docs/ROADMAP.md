@@ -11,9 +11,10 @@ worth, divided by its size.
 - Classifier and turn detection fixes: tool-result messages are loop steps; Claude Code's wrappers,
   notifications, summaries and hidden prompts (next-prompt suggestions, idle recaps) are not user
   prompts; escalation only on tasks that ended failing; the user's `/effort` is a ceiling.
-- Effort without a ledger: the per-turn control message Claude Code sends is rewritten in place
-  when it is the request's tail, otherwise an effort-only message is appended at the tail. No
-  history edits, nothing to remember across requests or restarts.
+- Effort without a ledger: an effort-only message appended at the tail of each request. Claude
+  Code's own control message is never edited, because the first live run showed an edited copy
+  costs about 11K tokens of cache writes per turn. No history edits, nothing to remember across
+  requests or restarts.
 - Agent awareness: agent type read from the system prompt; Explore agents routed to Sonnet at
   their first request; forks never switched; downshifts that would discard the current model's
   thinking held.
