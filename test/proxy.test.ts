@@ -197,7 +197,7 @@ describe('proxy end to end', () => {
     const r1 = await send({ messages: turn1 });
     assert.equal(r1.res.status, 200);
     assert.match(r1.text, /message_stop/);
-    assert.equal(r1.res.headers.get('x-switchyard-model'), 'claude-haiku-5-5');
+    assert.equal(r1.res.headers.get('x-legato-model'), 'claude-haiku-5-5');
     assert.equal(seen[0]!.body.model, 'claude-haiku-5-5');
     assert.equal(seen[0]!.headers['authorization'], undefined);
     assert.equal(seen[0]!.headers['x-api-key'], 'test');
@@ -345,9 +345,9 @@ describe('proxy end to end', () => {
     await start();
     const m = await fetch(`${proxy.url}/v1/models`, { headers: { 'x-api-key': 'k' } });
     assert.equal(m.status, 200);
-    const d = await fetch(`${proxy.url}/switchyard`);
-    assert.match(await d.text(), /Switchyard/);
-    const s = await (await fetch(`${proxy.url}/switchyard/stats`)).json();
+    const d = await fetch(`${proxy.url}/legato`);
+    assert.match(await d.text(), /Legato/);
+    const s = await (await fetch(`${proxy.url}/legato/stats`)).json();
     assert.equal(typeof s.stats.requests, 'number');
   });
 });

@@ -1,6 +1,6 @@
 # How it works
 
-Switchyard is a local HTTP proxy. Claude Code is pointed at it with `ANTHROPIC_BASE_URL`; the proxy reads each request, decides the model and effort, rewrites the request when that pays, and streams the response back. Nothing is sent anywhere except the API you already use.
+Legato is a local HTTP proxy. Claude Code is pointed at it with `ANTHROPIC_BASE_URL`; the proxy reads each request, decides the model and effort, rewrites the request when that pays, and streams the response back. Nothing is sent anywhere except the API you already use.
 
 ## Why routing is not a one-liner
 
@@ -12,7 +12,7 @@ The catch: **each model has its own prompt cache.** Switching the main model mid
 
 One `decide()` function, called by both the proxy and the analyzer.
 
-**Effort, every turn, free.** Claude Code attaches a control message carrying the turn's effort to each user turn. Switchyard sets the effort on that message when it is the request's tail, and otherwise appends an effort-only message at the tail. Either way the user and assistant history is untouched, so the cached prefix and preserved thinking blocks stay valid. A mechanical turn on Opus runs at `medium` instead of `xhigh`; a hard one keeps the user's setting. This is the only lever that works on a long main thread.
+**Effort, every turn, free.** Claude Code attaches a control message carrying the turn's effort to each user turn. Legato sets the effort on that message when it is the request's tail, and otherwise appends an effort-only message at the tail. Either way the user and assistant history is untouched, so the cached prefix and preserved thinking blocks stay valid. A mechanical turn on Opus runs at `medium` instead of `xhigh`; a hard one keeps the user's setting. This is the only lever that works on a long main thread.
 
 **Model, at cache boundaries.** A switch happens only at a user turn, never inside a tool loop, and only when it is free or pays:
 
@@ -35,12 +35,12 @@ The derivation of the rule is in [DESIGN.md](DESIGN.md).
 
 ## "Dynamic mode"
 
-Claude Code's header names the model it was launched with, and nothing outside the binary can change that line. So `switchyard` launches Claude Code with `--model "Dynamic mode"`, an alias the proxy resolves (`modelAliases` in the config; by default "route, up to Opus 5.5") and never forwards to the API. Because Claude Code doesn't know that name, the launcher also sets `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000` (otherwise it assumes a 200K window and warns) and the `ANTHROPIC_CUSTOM_MODEL_OPTION*` variables that put "Dynamic mode" in the `/model` picker with effort and thinking enabled. Launching by hand with a real model name works too; the router treats it as the ceiling.
+Claude Code's header names the model it was launched with, and nothing outside the binary can change that line. So `legato` launches Claude Code with `--model "Dynamic mode"`, an alias the proxy resolves (`modelAliases` in the config; by default "route, up to Opus 5.5") and never forwards to the API. Because Claude Code doesn't know that name, the launcher also sets `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000` (otherwise it assumes a 200K window and warns) and the `ANTHROPIC_CUSTOM_MODEL_OPTION*` variables that put "Dynamic mode" in the `/model` picker with effort and thinking enabled. Launching by hand with a real model name works too; the router treats it as the ceiling.
 
-The status line is what shows the routed model. `switchyard` adds it to `~/.claude/settings.json` on first use when no status line is configured:
+The status line is what shows the routed model. `legato` adds it to `~/.claude/settings.json` on first use when no status line is configured:
 
 ```json
-"statusLine": { "type": "command", "command": "switchyard statusline" }
+"statusLine": { "type": "command", "command": "legato statusline" }
 ```
 
 ## Safety properties
@@ -56,16 +56,16 @@ The status line is what shows the routed model. `switchyard` adds it to `~/.clau
 ## Commands and options
 
 ```bash
-switchyard                       # run Claude Code through the router (starts the proxy if needed)
-switchyard start --mode shadow   # proxy only, decides and logs, forwards as sent
-switchyard analyze --since 30d --html report.html   # replay your own transcripts
-switchyard explain "add a loading state to the table" --context 180000   # one decision, with the arithmetic
-switchyard stats                 # totals from the running or last proxy
+legato                       # run Claude Code through the router (starts the proxy if needed)
+legato start --mode shadow   # proxy only, decides and logs, forwards as sent
+legato analyze --since 30d --html report.html   # replay your own transcripts
+legato explain "add a loading state to the table" --context 180000   # one decision, with the arithmetic
+legato stats                 # totals from the running or last proxy
 ```
 
-Options: `--preset conservative|balanced|aggressive`, `--classifier haiku` (Haiku 5.5 classifies each turn; needs `ANTHROPIC_API_KEY`), `--trial general-purpose=claude-sonnet-5-5/high:50`, `--no-effort`, `--fable`. Everything is in `~/.switchyard/config.json`; see `src/config.ts`. A leading `//h`, `//s`, `//o` or `//f` on a prompt forces a tier for that turn.
+Options: `--preset conservative|balanced|aggressive`, `--classifier haiku` (Haiku 5.5 classifies each turn; needs `ANTHROPIC_API_KEY`), `--trial general-purpose=claude-sonnet-5-5/high:50`, `--no-effort`, `--fable`. Everything is in `~/.legato/config.json`; see `src/config.ts`. A leading `//h`, `//s`, `//o` or `//f` on a prompt forces a tier for that turn.
 
-Decision log: `~/.switchyard/decisions.jsonl`. Dashboard: http://127.0.0.1:8787/switchyard.
+Decision log: `~/.legato/decisions.jsonl`. Dashboard: http://127.0.0.1:8787/legato.
 
 ## Limitations
 

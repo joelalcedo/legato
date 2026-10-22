@@ -71,7 +71,7 @@ function copyResponseHeaders(from: Response, to: ServerResponse, routedModel?: s
   from.headers.forEach((v, k) => {
     if (!RESPONSE_DROP.has(k.toLowerCase())) to.setHeader(k, v);
   });
-  if (routedModel) to.setHeader('x-switchyard-model', routedModel);
+  if (routedModel) to.setHeader('x-legato-model', routedModel);
 }
 
 function preview(text: string): string {
@@ -106,9 +106,9 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
   const sessions = new SessionStore(500, persist ? cfg.dataDir : undefined);
   const stats = new StatsStore(cfg.dataDir, persist);
   const upstream = cfg.upstream.replace(/\/$/, '');
-  const classifierKey = process.env.SWITCHYARD_CLASSIFIER_KEY ?? process.env.ANTHROPIC_API_KEY;
+  const classifierKey = process.env.LEGATO_CLASSIFIER_KEY ?? process.env.ANTHROPIC_API_KEY;
   if (cfg.classifier === 'haiku' && !classifierKey) {
-    log(`[switchyard] classifier haiku needs SWITCHYARD_CLASSIFIER_KEY or ANTHROPIC_API_KEY; using the heuristic`);
+    log(`[legato] classifier haiku needs LEGATO_CLASSIFIER_KEY or ANTHROPIC_API_KEY; using the heuristic`);
   }
   /** Per Claude Code session: what its main thread's status line shows. */
   const statusTotals = new Map<string, { turns: number; requests: number; costUsd: number; baselineUsd: number }>();
@@ -174,7 +174,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
 
       if (live && cfg.failOpen && FAIL_OPEN_STATUSES.has(upstreamRes.status)) {
         const errText = await upstreamRes.text();
-        log(`[switchyard] ${upstreamRes.status} on ${sendBody.model}; retrying as sent by Claude Code: ${errText.slice(0, 300)}`);
+        log(`[legato] ${upstreamRes.status} on ${sendBody.model}; retrying as sent by Claude Code: ${errText.slice(0, 300)}`);
         outcome.failOpen = true;
         outcome.ranOn = original.model;
         upstreamRes = await fetch(upstream + req.url, {
@@ -214,7 +214,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       outcome.status = aborted ? CLIENT_CLOSED : 502;
       account(session, original, decision, rewrite, features, outcome, t0, classifier);
       if (aborted) {
-        log(`[switchyard] client closed the request after ${((now() - t0) / 1000).toFixed(1)}s (${outcome.ranOn}, ${features.newUserTurn ? 'user turn' : 'tool loop'})`);
+        log(`[legato] client closed the request after ${((now() - t0) / 1000).toFixed(1)}s (${outcome.ranOn}, ${features.newUserTurn ? 'user turn' : 'tool loop'})`);
         return;
       }
       throw err;
@@ -336,7 +336,7 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
 
     if (decision.route && (decision.switched || features.newUserTurn)) {
       log(
-        `[switchyard] ${original.model} -> ${entry.routed}${entry.effort ? '/' + entry.effort : ''}` +
+        `[legato] ${original.model} -> ${entry.routed}${entry.effort ? '/' + entry.effort : ''}` +
           `${entry.switched ? ' (switch)' : ''}  ${decision.reasons.join(' | ')}`,
       );
     }
@@ -345,12 +345,12 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
   const server = createServer(async (req, res) => {
     try {
       const path = (req.url ?? '/').split('?')[0]!;
-      if (req.method === 'GET' && (path === '/switchyard' || path === '/')) {
+      if (req.method === 'GET' && (path === '/legato' || path === '/')) {
         res.setHeader('content-type', 'text/html; charset=utf-8');
         res.end(dashboard(stats, cfg));
         return;
       }
-      if (req.method === 'GET' && path === '/switchyard/stats') {
+      if (req.method === 'GET' && path === '/legato/stats') {
         res.setHeader('content-type', 'application/json');
         res.end(JSON.stringify({ stats: stats.stats, recent: stats.recent.slice(0, 50) }, null, 2));
         return;
@@ -369,11 +369,11 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     } catch (err) {
       const e = err as Error;
       if (e.name === 'AbortError') return;
-      log(`[switchyard] error: ${e.stack ?? e.message}`);
+      log(`[legato] error: ${e.stack ?? e.message}`);
       if (!res.headersSent) {
         res.statusCode = 502;
         res.setHeader('content-type', 'application/json');
-        res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: `switchyard: ${e.message}` } }));
+        res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: `legato: ${e.message}` } }));
       } else {
         res.end();
       }
@@ -417,8 +417,8 @@ function dashboard(store: StatsStore, cfg: RouterConfig): string {
     )
     .join('');
   return page(
-    'Switchyard',
-    `<header><h1>Switchyard</h1><p>Mode <b>${esc(cfg.mode)}</b> · preset <b>${esc(cfg.preset)}</b> · cache TTL ${cfg.cacheTtlSeconds}s · since ${esc(s.startedAt.slice(0, 16).replace('T', ' '))}</p></header>
+    'Legato',
+    `<header><h1>Legato</h1><p>Mode <b>${esc(cfg.mode)}</b> · preset <b>${esc(cfg.preset)}</b> · cache TTL ${cfg.cacheTtlSeconds}s · since ${esc(s.startedAt.slice(0, 16).replace('T', ' '))}</p></header>
 <div class="cards">
 <div class="card"><div class="k">Requests</div><div class="v">${int(s.requests)}</div><div class="s">${int(s.routed)} routed</div></div>
 <div class="card"><div class="k">Model switches</div><div class="v">${int(s.switches)}</div><div class="s">${int(s.freeSwitches)} at free cache boundaries</div></div>

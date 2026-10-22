@@ -1,4 +1,6 @@
-# Switchyard
+# Legato
+
+*legato* (music): notes joined without a break. Here: Claude Code switching models without breaking the cache or the thread.
 
 **Claude Code, with the model picked per turn.** Renames and commits run on Haiku, ordinary work on Sonnet, hard problems on Opus, and the switch only happens when the prompt-cache math says it pays. Replayed on 30 days of one developer's real sessions, it cut the bill by **9.9%**, and 12.7% in a month with Fable sessions. Routing that ignores the cache saved 2.9% and paid $752 in cache rebuilds.
 
@@ -30,7 +32,7 @@ Same account, same 30 days, 51.9K API requests, $5.1K at list prices. Cache rebu
 Your number comes from your own history, nothing leaves your machine:
 
 ```bash
-switchyard analyze --since 30d --html report.html
+legato analyze --since 30d --html report.html
 ```
 
 What the replay cannot see is whether a cheaper model takes more turns. The `--trial` flag measures that live. Details and caveats: [docs/EVALUATION.md](docs/EVALUATION.md).
@@ -40,13 +42,13 @@ What the replay cannot see is whether a cheaper model takes more turns. The `--t
 Node 20+ and Claude Code.
 
 ```bash
-npm install -g github:joelalcedo/switchyard
-switchyard
+npm install -g github:joelalcedo/legato
+legato
 ```
 
-That is the whole setup. `switchyard` starts the local proxy if it isn't running, adds a status line to your Claude Code settings on first use, and launches Claude Code through it as "Dynamic mode". Arguments pass through: `switchyard --resume`. Dashboard at http://127.0.0.1:8787/switchyard.
+That is the whole setup. `legato` starts the local proxy if it isn't running, adds a status line to your Claude Code settings on first use, and launches Claude Code through it as "Dynamic mode". Arguments pass through: `legato --resume`. Dashboard at http://127.0.0.1:8787/legato.
 
-To watch before trusting it, run the proxy in shadow mode first (it decides and logs, but forwards every request as sent): `switchyard start --mode shadow`, then `switchyard` in another terminal.
+To watch before trusting it, run the proxy in shadow mode first (it decides and logs, but forwards every request as sent): `legato start --mode shadow`, then `legato` in another terminal.
 
 ## More
 

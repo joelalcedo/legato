@@ -1,4 +1,4 @@
-# Switchyard
+# Legato
 
 Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime dependencies.
 
@@ -20,7 +20,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `src/rewrite.ts` — applies a decision to a request; sets the turn's effort on Claude Code's per-turn control message when it is the request's tail, otherwise on an effort-only system message appended at the tail.
 - `src/sessions.ts` — conversation identity (session id from `metadata.user_id`, forks keyed apart) and on-disk state.
 - `src/proxy.ts` — HTTP proxy, SSE usage tap, fail-open, decision log, dashboard, per-session status files.
-- `src/stats.ts` — decision log entries, running totals, status files for `switchyard statusline`.
+- `src/stats.ts` — decision log entries, running totals, status files for `legato statusline`.
 - `src/analyzer/` — transcript reader (Claude Code 2.1.28x–2.1.30x formats), replay, text and HTML reports.
 - `src/pricing.ts`, `src/models.ts` — prices and model capabilities. Update when models change.
 - `docs/DESIGN.md` — derivation of the switching rule. `docs/EVALUATION.md` — results on real data. `docs/ROADMAP.md`. `docs/PITCH.md`.
@@ -32,7 +32,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - Anything that changes request bytes must be deterministic across requests, or it breaks the prompt cache and can invalidate preserved thinking. Never insert into or reorder the user/assistant history. Add a prefix-stability test for any change to request bytes.
 - Savings estimates should err low: when unsure, price tokens as cache writes. Assumptions (effort's effect on output) go on their own labelled line, never in the headline.
 - A policy change comes with `analyze --since <fixed date>` before and after, on the same window.
-- `report.html` and anything under `~/.switchyard` contain real prompts; never commit them.
+- `report.html` and anything under `~/.legato` contain real prompts; never commit them.
 
 ## Claude Code facts the code depends on
 

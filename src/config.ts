@@ -51,7 +51,7 @@ export interface RouterConfig {
    * "let the router choose, up to this model". Claude Code's header then shows the alias.
    */
   modelAliases: Record<string, string>;
-  /** The model name `switchyard claude` launches Claude Code with; its header shows this text. */
+  /** The model name `legato claude` launches Claude Code with; its header shows this text. */
   launchModel: string;
   /**
    * Hold a downshift that would discard more than this many tokens of the current model's
@@ -109,7 +109,7 @@ const BASE: RouterConfig = {
   switchMidLoop: false,
   planTier: 'opus',
   subagentTiers: { Explore: 'sonnet' },
-  modelAliases: { 'Dynamic mode': 'claude-opus-5-5', dynamic: 'claude-opus-5-5', auto: 'claude-opus-5-5', switchyard: 'claude-opus-5-5' },
+  modelAliases: { 'Dynamic mode': 'claude-opus-5-5', dynamic: 'claude-opus-5-5', auto: 'claude-opus-5-5', legato: 'claude-opus-5-5' },
   launchModel: 'Dynamic mode',
   holdThinkingTokens: 20_000,
   classifier: 'heuristic',
@@ -121,7 +121,7 @@ const BASE: RouterConfig = {
   upstream: 'https://api.anthropic.com',
   port: 8787,
   host: '127.0.0.1',
-  dataDir: join(homedir(), '.switchyard'),
+  dataDir: join(homedir(), '.legato'),
 };
 
 const PRESETS: Record<Preset, Partial<RouterConfig>> = {
@@ -171,11 +171,11 @@ function mergeConfig(base: RouterConfig, patch: Partial<RouterConfig>): RouterCo
 }
 
 /**
- * Resolve config: defaults, then the preset, then ~/.switchyard/config.json (or
- * SWITCHYARD_CONFIG), then explicit overrides from the CLI.
+ * Resolve config: defaults, then the preset, then ~/.legato/config.json (or
+ * LEGATO_CONFIG), then explicit overrides from the CLI.
  */
 export function loadConfig(overrides: Partial<RouterConfig> = {}): RouterConfig {
-  const path = process.env.SWITCHYARD_CONFIG ?? join(BASE.dataDir, 'config.json');
+  const path = process.env.LEGATO_CONFIG ?? join(BASE.dataDir, 'config.json');
   let fileCfg: Partial<RouterConfig> = {};
   if (existsSync(path)) {
     try {
@@ -188,7 +188,7 @@ export function loadConfig(overrides: Partial<RouterConfig> = {}): RouterConfig 
   let cfg = defaultConfig(preset);
   cfg = mergeConfig(cfg, fileCfg);
   cfg = mergeConfig(cfg, overrides);
-  if (process.env.SWITCHYARD_UPSTREAM) cfg.upstream = process.env.SWITCHYARD_UPSTREAM;
+  if (process.env.LEGATO_UPSTREAM) cfg.upstream = process.env.LEGATO_UPSTREAM;
   validate(cfg);
   return cfg;
 }

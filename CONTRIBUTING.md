@@ -21,7 +21,7 @@ npm run demo       # replay the synthetic samples, write examples/sample-report.
 - **Savings err low.** When unsure how a token would have been billed, price it as a cache write.
   Assumptions that can't be measured (effort's effect on output length) are reported on their
   own line, never in the headline.
-- **Measure on real data before changing policy.** `switchyard analyze --since 30d` before and
+- **Measure on real data before changing policy.** `legato analyze --since 30d` before and
   after, same window, and put both numbers in the PR.
 
 ## Recording the demo
@@ -30,7 +30,7 @@ The README links `docs/demo.gif`. It has to come from a real session, so it is r
 
 ```bash
 brew install asciinema agg          # agg renders a .cast to a gif
-asciinema rec docs/demo.cast         # then: switchyard; an easy prompt, a hard one, exit
+asciinema rec docs/demo.cast         # then: legato; an easy prompt, a hard one, exit
 agg --cols 100 --rows 30 docs/demo.cast docs/demo.gif
 ```
 
@@ -38,7 +38,7 @@ Show the header (`Dynamic mode`), one cheap turn landing on Haiku, one hard turn
 
 ## Reporting a transcript the reader gets wrong
 
-Run `switchyard analyze --since 7d --json` and look for a conversation whose request count
+Run `legato analyze --since 7d --json` and look for a conversation whose request count
 or costs look off; then open an issue with the shape of the lines involved (types, roles,
 `parentUuid` chain), not their content. The reader is tested against shapes taken from real
 Claude Code transcripts in `test/analyzer.test.ts`.

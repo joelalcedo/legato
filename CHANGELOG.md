@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Name
+- Renamed to **Legato** (was Switchyard, which is taken on npm). Command `legato`, data in
+  `~/.legato`, env vars `LEGATO_CONFIG` and `LEGATO_CLASSIFIER_KEY`, dashboard at `/legato`,
+  repository `github.com/joelalcedo/legato`.
+
 ### Routing
 - Effort is set by rewriting the per-turn control message Claude Code already sends, instead of
   inserting an effort-only message tracked in a ledger. Nothing is inserted into history, so the
@@ -25,14 +30,14 @@
 ### Proxy
 - Shadow mode forwards Claude Code's bytes untouched; the log records `forwarded` and `ranOn`.
 - Requests Claude Code abandons are logged with status 499; upstream failures with 502.
-- Session state persists under `~/.switchyard/state`.
-- A per-session status file under `~/.switchyard/status` drives `switchyard statusline`.
+- Session state persists under `~/.legato/state`.
+- A per-session status file under `~/.legato/status` drives `legato statusline`.
 - The status line is written in words: `running on Sonnet 5.5 at medium effort instead of Opus 5.5 ·
   saved $0.58 over 3 turns`; held switches show the rebuild cost.
-- `switchyard claude`: starts the proxy if needed and launches Claude Code through it as
+- `legato claude`: starts the proxy if needed and launches Claude Code through it as
   "Dynamic mode", with the environment that stops Claude Code assuming a 200K window for a name
   it doesn't know. Warns when the running proxy is an older build than the installed code.
-- Launch aliases (`Dynamic mode`, `dynamic`, `auto`, `switchyard`, matched loosely): the proxy
+- Launch aliases (`Dynamic mode`, `dynamic`, `auto`, `legato`, matched loosely): the proxy
   resolves them to a ceiling model (`modelAliases`) on every request, including background ones
   and shadow mode, logged as `forwarded: "aliased"`.
 - The status line reports a request the router forwarded as sent, or one the API rejected, instead

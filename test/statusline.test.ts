@@ -61,12 +61,12 @@ describe('status line', () => {
     const stale: SessionStatus = { ...base, incoming: 'dynamic', model: 'dynamic', through: false, lastStatus: 404, reason: 'unrecognized model family' };
     assert.equal(
       formatStatus(stale),
-      '⇄ switchyard: last request failed, the API does not know the model "dynamic" · unrecognized model family; if you just rebuilt switchyard, restart the proxy',
+      '⇄ legato: last request failed, the API does not know the model "dynamic" · unrecognized model family; if you just rebuilt legato, restart the proxy',
     );
     const passthrough: SessionStatus = { ...stale, lastStatus: 200 };
-    assert.equal(formatStatus(passthrough), '⇄ switchyard: forwarding "dynamic" as sent (unrecognized model family)');
+    assert.equal(formatStatus(passthrough), '⇄ legato: forwarding "dynamic" as sent (unrecognized model family)');
     const overloaded: SessionStatus = { ...base, lastStatus: 529, through: true };
-    assert.equal(formatStatus(overloaded), '⇄ switchyard: last request failed, HTTP 529 from the API');
+    assert.equal(formatStatus(overloaded), '⇄ legato: last request failed, HTTP 529 from the API');
     // A request the user cancelled is not a failure.
     assert.match(formatStatus({ ...base, lastStatus: 499, through: true }), /^⇄ running on Sonnet 5\.5/);
   });

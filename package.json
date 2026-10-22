@@ -1,10 +1,10 @@
 {
-  "name": "switchyard",
+  "name": "legato",
   "version": "0.1.0",
   "description": "Cache-aware model routing for Claude Code: picks model and effort per turn, and only switches models when the prompt-cache math says it pays.",
   "type": "module",
   "bin": {
-    "switchyard": "dist/cli.js"
+    "legato": "dist/cli.js"
   },
   "main": "dist/index.js",
   "files": [
@@ -14,7 +14,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/joelalcedo/switchyard.git"
+    "url": "https://github.com/joelalcedo/legato.git"
   },
   "scripts": {
     "prepare": "tsc -p tsconfig.json",

@@ -1,6 +1,6 @@
 # Pitch: cache-aware routing for Claude Code
 
-**One line:** Claude Code should pick the model per turn, the way Copilot and Cursor now do, but only switch models when the prompt-cache math says it pays, and use per-turn effort as the free knob in between. Switchyard is a working implementation of that policy, evaluated on a real account's history.
+**One line:** Claude Code should pick the model per turn, the way Copilot and Cursor now do, but only switch models when the prompt-cache math says it pays, and use per-turn effort as the free knob in between. Legato is a working implementation of that policy, evaluated on a real account's history.
 
 ## The problem
 
@@ -38,13 +38,13 @@ Details, including what the replay cannot see, are in [EVALUATION.md](EVALUATION
 
 ## Asks
 
-1. Run `switchyard analyze` across internal dogfooding transcripts to size the opportunity on real sessions.
+1. Run `legato analyze` across internal dogfooding transcripts to size the opportunity on real sessions.
 2. Feedback on the policy, especially whether a native version could share system-prompt and tool-definition cache across models, which would remove most of the switching penalty, and whether thinking-block portability between models is on the roadmap.
 3. A path to a native `model: "auto"` in Claude Code, with the routed model visible in the UI and per-turn override.
 4. A final token count on every transcript response: 69% of recorded responses stop before it, which hides output cost from any analysis of real usage.
 
 ## Demo script (5 minutes)
 
-1. `switchyard analyze --since 30d --html report.html` on a real account; open the report.
-2. `switchyard explain "add a loading state" --context 180000` vs `--context 25000`: same prompt, opposite decisions, with the arithmetic shown.
+1. `legato analyze --since 30d --html report.html` on a real account; open the report.
+2. `legato explain "add a loading state" --context 180000` vs `--context 25000`: same prompt, opposite decisions, with the arithmetic shown.
 3. Live session through the proxy with the status line on: a rename drops the effort, a "why does this break" question keeps Opus at xhigh, an Explore subagent runs on Sonnet, and a typo on a huge context holds Opus with the rebuild cost in the reason.

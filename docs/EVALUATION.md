@@ -2,7 +2,7 @@
 
 Everything here comes from replaying one developer's `~/.claude/projects` transcripts through the
 same `decide()` the proxy runs, with cache rebuilds priced at API list prices. The replay is
-`switchyard analyze`; the method is in [DESIGN.md](DESIGN.md). Numbers are from a Claude Max
+`legato analyze`; the method is in [DESIGN.md](DESIGN.md). Numbers are from a Claude Max
 subscription, so "dollars" means usage at list prices, not money the developer would have paid.
 
 ## The data

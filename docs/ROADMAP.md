@@ -26,7 +26,7 @@ worth, divided by its size.
 
 ## Next
 
-1. **Run the trial on general-purpose subagents.** `switchyard start --trial
+1. **Run the trial on general-purpose subagents.** `legato start --trial
    general-purpose=claude-sonnet-5-5/high:50` for two weeks, then compare arms on
    requests-to-finish, failing tool results per task, and how often the parent re-dispatches.
    This is the only lever above ~15%, and the replay cannot measure it.

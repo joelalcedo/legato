@@ -66,7 +66,7 @@ A switch is free (no gate) when there is no cache to lose: the conversation's fi
 
 A per-message effort change is a message `{"role":"system","content":[],"output_config":{"effort":"low"}}` placed right after the user turn it applies to. Claude Code never sees it, so its next request omits it, which would change the prefix and lose the cache.
 
-The ledger stores `(index, hash of the anchor message, effort)` in Claude Code's own message indices. On every request Switchyard re-inserts each entry after its anchor if the anchor's hash still matches (hashes ignore `cache_control`, which Claude Code moves between requests). After `/compact` or `/rewind` the anchors stop matching and the entries drop, which is correct because the prefix changed anyway.
+The ledger stores `(index, hash of the anchor message, effort)` in Claude Code's own message indices. On every request Legato re-inserts each entry after its anchor if the anchor's hash still matches (hashes ignore `cache_control`, which Claude Code moves between requests). After `/compact` or `/rewind` the anchors stop matching and the entries drop, which is correct because the prefix changed anyway.
 
 ## Conversation identity
 

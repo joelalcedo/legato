@@ -14,7 +14,7 @@ import { normalizeModel } from './pricing.js';
 /**
  * Effort is set per message. Claude Code ends every request with a `role: "system"`
  * control message that carries `output_config.effort` for the turn (beta
- * per-turn-control-2026-07-01); Switchyard rewrites that value. The control message is
+ * per-turn-control-2026-07-01); Legato rewrites that value. The control message is
  * the tail of the request, never part of the user/assistant history Claude Code re-sends,
  * so changing it edits no history: the cached prefix and every preserved thinking block
  * stay valid, and nothing has to be remembered between requests. A client that sends no
