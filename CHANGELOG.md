@@ -15,7 +15,7 @@
 - Claude Code's hidden prompts (the next-prompt suggestion sent after every turn, the idle recap,
   the text-only summary) hold the model and effort and are not turns. Found in shadow mode: the
   suggestion request alone would have moved a Haiku session back to Opus after every turn.
-- Subagents are routed by agent type at their first request (`subagentTiers`; Explore → Sonnet).
+- Subagents are routed by agent type at their first request (`subagentTiers`; Explore agents go to Sonnet).
 - Forks are never switched: they inherit the parent's context, cache and thinking.
 - A downshift that would discard more than `holdThinkingTokens` of the current model's thinking
   is held, and effort adjusted instead.
@@ -46,7 +46,7 @@
 - Removed the stale 64K `max_tokens` clamp for Haiku 5.5.
 
 ### Analyzer
-- Transcript reader rewritten for Claude Code 2.1.28x–2.1.30x: per-block response lines,
+- Transcript reader rewritten for Claude Code 2.1.28x to 2.1.30x: per-block response lines,
   `parentUuid` branches, resumed sessions and forks, fork context references, plan-mode
   attachments, per-request effort, responses without final usage.
 - `--since` skips old files before parsing; token estimation is lazy (30 days in 18s, from 6 minutes).
