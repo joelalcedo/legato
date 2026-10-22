@@ -37,16 +37,16 @@ describe('rewrite', () => {
   };
   const decision: Decision = { route: true, model: 'claude-haiku-5-5', effort: 'low', switched: true, reasons: [] };
 
-  it("sets the model, strips the override and rewrites the effort in Claude Code's control message", () => {
+  it("sets the model, strips the override and appends the effort without touching Claude Code's control message", () => {
     const rw = rewriteRequest(base, decision, extractFeatures(base), undefined, cfg);
     assert.equal(rw.body.model, 'claude-haiku-5-5');
-    // Claude Code's own per-turn-control beta covers a rewritten value: no header is added.
-    assert.equal(rw.betas.length, 0);
+    assert.ok(rw.betas.includes(PER_MESSAGE_EFFORT_BETA));
     const msgs = rw.body.messages;
-    assert.equal(msgs.length, 4);
+    assert.equal(msgs.length, 5);
     assert.equal((msgs[2]!.content as any)[0].text, 'thanks');
-    assert.deepEqual(msgs[3]!.output_config, { effort: 'low' });
-    assert.deepEqual((msgs[3]!.content as any)[0].cache_control, { type: 'ephemeral', ttl: '1h' });
+    // Claude Code's control message, cache marker included, goes through exactly as sent.
+    assert.deepEqual(msgs[3], base.messages[3]);
+    assert.deepEqual(msgs[4]!.output_config, { effort: 'low' });
     assert.equal(rw.effort, 'low');
     assert.equal(rw.effortChanged, true);
     assert.equal(rw.modified, true);
@@ -66,8 +66,8 @@ describe('rewrite', () => {
     const loop: MessagesRequest = { ...base, messages: [user('rename a to b'), toolUse, toolResult, control('xhigh')] };
     const hold: Decision = { route: true, model: 'claude-opus-5-5', switched: false, reasons: [] };
     const rw = rewriteRequest(loop, hold, extractFeatures(loop), 'low', cfg);
-    assert.deepEqual(rw.body.messages.slice(0, 3), loop.messages.slice(0, 3));
-    assert.deepEqual(rw.body.messages[3]!.output_config, { effort: 'low' });
+    assert.deepEqual(rw.body.messages.slice(0, 4), loop.messages);
+    assert.deepEqual(rw.body.messages[4]!.output_config, { effort: 'low' });
     assert.equal(rw.effortChanged, false);
   });
 
@@ -81,7 +81,8 @@ describe('rewrite', () => {
     const req = { ...base, thinking: { type: 'disabled' } };
     const rw = rewriteRequest(req, { ...decision, model: 'claude-sonnet-5-5', effort: 'medium' }, extractFeatures(req), undefined, cfg);
     assert.equal(rw.body.thinking, undefined);
-    assert.deepEqual(rw.body.messages[3]!.output_config, { effort: 'medium' });
+    assert.deepEqual(rw.body.messages[3], base.messages[3]);
+    assert.deepEqual(rw.body.messages[4]!.output_config, { effort: 'medium' });
   });
 
   it('does not change effort on Haiku 5.5 with thinking disabled, which rejects it', () => {
@@ -201,18 +202,22 @@ describe('proxy end to end', () => {
     assert.equal(seen[0]!.body.model, 'claude-haiku-5-5');
     assert.equal(seen[0]!.headers['authorization'], undefined);
     assert.equal(seen[0]!.headers['x-api-key'], 'test');
-    assert.deepEqual(seen[0]!.body.messages[1]!.output_config, { effort: 'medium' });
+    // Claude Code's control message goes through untouched; the effort rides on an appended message.
+    assert.deepEqual(seen[0]!.body.messages[1], control('xhigh'));
+    assert.deepEqual(seen[0]!.body.messages[2]!.output_config, { effort: 'medium' });
+    assert.equal(seen[0]!.body.messages.length, 3);
 
-    // Claude Code continues the tool loop, unaware of the routing; its control message moves to the new tail.
-    const turn1b: Message[] = [turn1[0]!, toolUse, toolResult, control('xhigh')];
+    // Claude Code continues the tool loop, unaware of the routing. Its control message stays where
+    // it was, after the user turn, and the loop's messages follow it.
+    const turn1b: Message[] = [turn1[0]!, control('xhigh'), toolUse, toolResult];
     await send({ messages: turn1b });
     assert.equal(seen[1]!.body.model, 'claude-haiku-5-5');
-    // The history the router forwarded in request 1 reappears byte for byte at the start of request 2,
-    // and the turn's effort is still in force without anything having been inserted.
-    assert.deepEqual(seen[1]!.body.messages.slice(0, 1), seen[0]!.body.messages.slice(0, 1));
-    assert.deepEqual(seen[1]!.body.messages.slice(1, 3), [toolUse, toolResult]);
-    assert.deepEqual(seen[1]!.body.messages[3]!.output_config, { effort: 'medium' });
-    assert.equal(String(seen[1]!.headers['anthropic-beta']).includes(PER_MESSAGE_EFFORT_BETA), false);
+    // Everything the router forwarded in request 1 ahead of its appended message reappears byte for
+    // byte at the start of request 2, so the cached prefix holds; the turn's effort is appended again.
+    assert.deepEqual(seen[1]!.body.messages.slice(0, 2), seen[0]!.body.messages.slice(0, 2));
+    assert.deepEqual(seen[1]!.body.messages.slice(2, 4), [toolUse, toolResult]);
+    assert.deepEqual(seen[1]!.body.messages[4]!.output_config, { effort: 'medium' });
+    assert.equal(String(seen[1]!.headers['anthropic-beta']).includes(PER_MESSAGE_EFFORT_BETA), true);
   });
 
   it('appends a cache-safe effort message with the beta when the client has no control message', async () => {

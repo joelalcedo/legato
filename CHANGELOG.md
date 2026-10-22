@@ -8,9 +8,12 @@
   repository `github.com/joelalcedo/legato`.
 
 ### Routing
-- Effort is set by rewriting the per-turn control message Claude Code already sends, instead of
-  inserting an effort-only message tracked in a ledger. Nothing is inserted into history, so the
-  cache prefix and preserved thinking blocks stay valid, and a proxy restart changes nothing.
+- Effort is set by appending an effort-only message at the tail of the request, under the
+  per-turn-control beta Claude Code already uses, instead of a ledger of inserted messages. Nothing
+  is inserted into history, so the cache prefix and preserved thinking blocks stay valid, and a
+  proxy restart changes nothing. Editing Claude Code's own control message in place was tried first
+  and dropped: the first live run showed it costs about 11K tokens of cache writes on the next
+  request of every turn whose effort changed.
 - A turn's effort holds through its tool loop.
 - Claude Code's hidden prompts (the next-prompt suggestion sent after every turn, the idle recap,
   the text-only summary) hold the model and effort and are not turns. Found in shadow mode: the

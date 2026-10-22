@@ -17,7 +17,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `src/engine.ts`: the decision function and cache economics (`decide`, `switchEconomics`, `observe`). Start here.
 - `src/classifier.ts`: heuristic difficulty classifier, plus `classifyWithModel` (Haiku 5.5, optional).
 - `src/features.ts`: signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks, thinking volume.
-- `src/rewrite.ts`: applies a decision to a request; sets the turn's effort on Claude Code's per-turn control message when it is the request's tail, otherwise on an effort-only system message appended at the tail.
+- `src/rewrite.ts`: applies a decision to a request; appends the turn's effort as an effort-only system message at the tail. It never edits Claude Code's own control message (DESIGN.md, "Setting the effort": an edited copy cost about 11K tokens of cache writes per turn in live traffic).
 - `src/sessions.ts`: conversation identity (session id from `metadata.user_id`, forks keyed apart) and on-disk state.
 - `src/proxy.ts`: HTTP proxy, SSE usage tap, fail-open, decision log, dashboard, per-session status files.
 - `src/stats.ts`: decision log entries, running totals, status files for `legato statusline`.

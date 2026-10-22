@@ -12,14 +12,16 @@ import {
 import { normalizeModel } from './pricing.js';
 
 /**
- * Effort is set per message. Claude Code ends every request with a `role: "system"`
- * control message that carries `output_config.effort` for the turn (beta
- * per-turn-control-2026-07-01); Legato rewrites that value. The control message is
- * the tail of the request, never part of the user/assistant history Claude Code re-sends,
- * so changing it edits no history: the cached prefix and every preserved thinking block
- * stay valid, and nothing has to be remembered between requests. A client that sends no
- * control message gets an effort-only message appended instead, under the
- * mid-conversation effort beta.
+ * Effort is set per message, under the per-turn-control-2026-07-01 beta Claude Code already
+ * uses: an effort-only `role: "system"` message is appended at the tail of the request. Claude
+ * Code never sees it, so the next request's history is byte-identical to this request's prefix
+ * and the proxy appends again. Nothing in the history is edited, the cached prefix and every
+ * preserved thinking block stay valid, and nothing has to be remembered between requests.
+ *
+ * Claude Code's own control message (environment block, tool definitions, the turn's effort)
+ * is left alone even when it is the tail. Claude Code re-sends it unchanged on the next request
+ * of the turn, so an edited copy is a cache miss from that message on; live traffic showed
+ * about 11K tokens written again per turn.
  */
 export function controlMessageIndex(messages: Message[]): number {
   const last = messages.length - 1;
@@ -134,16 +136,12 @@ export function rewriteRequest(
   let effortChanged = false;
 
   if (perMessage && target && target !== asked) {
-    const idx = controlMessageIndex(messages);
-    if (idx >= 0) {
-      const control = messages[idx]!;
-      messages = [...messages.slice(0, idx), { ...control, output_config: { ...(control.output_config as object), effort: target } }];
-      notes.push(`effort ${asked ?? 'default'} -> ${target} (rewrote the per-turn control message)`);
-    } else {
-      messages = [...messages, effortMessage(target)];
-      betas.push(PER_MESSAGE_EFFORT_BETA);
-      notes.push(`effort ${asked ?? 'default'} -> ${target} (appended an effort-only message)`);
-    }
+    // Always appended, never written into Claude Code's own control message. Claude Code re-sends
+    // that message unchanged on the next request of the turn, so an edited copy in the cached
+    // prefix is a cache miss from that point on: about 11K tokens per turn in live traffic.
+    messages = [...messages, effortMessage(target)];
+    betas.push(PER_MESSAGE_EFFORT_BETA);
+    notes.push(`effort ${asked ?? 'default'} -> ${target} (appended an effort-only message)`);
     changed = true;
     effort = target;
     effortChanged = features.newUserTurn;
