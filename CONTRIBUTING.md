@@ -24,6 +24,18 @@ npm run demo       # replay the synthetic samples, write examples/sample-report.
 - **Measure on real data before changing policy.** `switchyard analyze --since 30d` before and
   after, same window, and put both numbers in the PR.
 
+## Recording the demo
+
+The README links `docs/demo.gif`. It has to come from a real session, so it is recorded by hand:
+
+```bash
+brew install asciinema agg          # agg renders a .cast to a gif
+asciinema rec docs/demo.cast         # then: switchyard; an easy prompt, a hard one, exit
+agg --cols 100 --rows 30 docs/demo.cast docs/demo.gif
+```
+
+Show the header (`Dynamic mode`), one cheap turn landing on Haiku, one hard turn staying on Opus, and the status line changing between them. Keep it under 40 seconds and don't type anything private.
+
 ## Reporting a transcript the reader gets wrong
 
 Run `switchyard analyze --since 7d --json` and look for a conversation whose request count

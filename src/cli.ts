@@ -18,10 +18,11 @@ import { displayName, formatStatus, readSessionStatus, readStats } from './stats
 const HELP = `switchyard: cache-aware model routing for Claude Code
 
 Usage
-  switchyard claude [any claude arguments]
-      The normal way to run. Starts the proxy if it isn't running, then launches Claude Code
-      through it as "Dynamic mode": the header says so, and the status line says which model
-      and effort each turn actually ran on. Arguments go to claude unchanged (e.g. --resume).
+  switchyard [any claude arguments]
+      Run Claude Code through the router. Starts the proxy if it isn't running, adds a status
+      line to ~/.claude/settings.json on first use, then launches claude as "Dynamic mode": the
+      header says so, the status line says which model and effort each turn actually ran on.
+      Arguments go to claude unchanged (e.g. switchyard --resume). "switchyard claude" is the same.
 
   switchyard start [--port 8787] [--mode live|shadow] [--preset balanced] [--ttl 300]
                    [--classifier heuristic|haiku] [--trial <agentType>=<model>[/<effort>][:<share%>]]
@@ -140,8 +141,31 @@ async function probeProxy(url: string): Promise<ProxyHealth | undefined> {
 }
 
 /**
- * `switchyard claude`: make sure the proxy is up, then run Claude Code through it under the
- * launch alias. The alias is a model name Claude Code doesn't know, so the environment also
+ * First run: give Claude Code a status line that shows the routed model, unless the user has
+ * one already. Returns a note for the terminal when something was changed.
+ */
+function ensureStatusLine(): string | undefined {
+  const settingsPath = join(homedir(), '.claude', 'settings.json');
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return `could not read ${settingsPath}; add the status line by hand (see --help)`;
+  }
+  if (settings.statusLine !== undefined) return undefined;
+  settings.statusLine = { type: 'command', command: `node ${JSON.stringify(fileURLToPath(import.meta.url))} statusline` };
+  try {
+    mkdirSync(join(homedir(), '.claude'), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+    return `added a status line to ${settingsPath} so Claude Code shows the model each turn runs on (remove "statusLine" to undo)`;
+  } catch {
+    return `could not write ${settingsPath}; add the status line by hand (see --help)`;
+  }
+}
+
+/**
+ * `switchyard` with no command: make sure the proxy is up, then run Claude Code through it
+ * under the launch alias. The alias is a model name Claude Code doesn't know, so the environment also
  * tells Claude Code the real context window and the features the ceiling model supports;
  * otherwise it assumes 200K and warns on every start.
  */
@@ -167,6 +191,9 @@ async function launchClaude(cfg: RouterConfig, args: string[]): Promise<void> {
     );
   }
 
+  const note = ensureStatusLine();
+  if (note) process.stderr.write(`switchyard: ${note}\n`);
+
   const ceiling = resolveAlias(cfg, cfg.launchModel) ?? cfg.launchModel;
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -191,6 +218,12 @@ async function launchClaude(cfg: RouterConfig, args: string[]): Promise<void> {
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   const { positional, flags } = parseArgs(rest);
+
+  // No command, or only claude flags such as --resume: run Claude Code through the router.
+  if (cmd === undefined || (cmd.startsWith('-') && !['--help', '-h'].includes(cmd))) {
+    await launchClaude(loadConfig(), process.argv.slice(2));
+    return;
+  }
 
   switch (cmd) {
     case 'claude': {
@@ -321,7 +354,6 @@ async function main(): Promise<void> {
       return;
     }
 
-    case undefined:
     case 'help':
     case '--help':
     case '-h':
