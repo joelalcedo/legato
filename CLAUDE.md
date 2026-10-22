@@ -16,7 +16,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `src/engine.ts` — the decision function and cache economics (`decide`, `switchEconomics`, `observe`). Start here.
 - `src/classifier.ts` — heuristic difficulty classifier, plus `classifyWithModel` (Haiku 5.5, optional).
 - `src/features.ts` — signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks, thinking volume.
-- `src/rewrite.ts` — applies a decision to a request; rewrites the effort on Claude Code's per-turn control message (the request's tail).
+- `src/rewrite.ts` — applies a decision to a request; sets the turn's effort on Claude Code's per-turn control message when it is the request's tail, otherwise on an effort-only system message appended at the tail.
 - `src/sessions.ts` — conversation identity (session id from `metadata.user_id`, forks keyed apart) and on-disk state.
 - `src/proxy.ts` — HTTP proxy, SSE usage tap, fail-open, decision log, dashboard, per-session status files.
 - `src/stats.ts` — decision log entries, running totals, status files for `switchyard statusline`.
@@ -35,7 +35,9 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 
 ## Claude Code facts the code depends on
 
-- Every request ends with a `role: "system"` message carrying the environment block and `output_config.effort` (beta `per-turn-control-2026-07-01`). It is the tail, not history.
+- Claude Code attaches a `role: "system"` control message to each user turn, carrying the environment block, `tool_addition` blocks and `output_config.effort` (beta `per-turn-control-2026-07-01`). It is the tail of the turn's first request only: in later requests the loop's assistant and tool-result messages follow it, and Claude Code re-sends it with its own effort. Top-level `output_config.effort` is set on every request as well.
+- After every turn Claude Code sends a hidden `[SUGGESTION MODE: …]` request with the whole conversation and the tools, and after idle time a `The user stepped away and is coming back` recap. They arrive as user messages but are not user turns (`MACHINE_TEXT_RE` in `features.ts`); the proxy holds the model and effort for them.
+- The `security-guidance` plugin reviews each commit in a separate Agent SDK session (`entrypoint: sdk-py`) with its own session id; it shows up as agent type `agent`.
 - `metadata.user_id` is a JSON string with `device_id`, `account_uuid`, `session_id`. Subagents share the session id; the conversation key also hashes the system prompt, the first message and the fork boilerplate position.
 - Main-thread system prompts start "You are Claude Code, Anthropic's official CLI for Claude."; subagents start "You are a Claude agent, built on Anthropic's Claude Agent SDK." followed by a type-specific block (see `AGENT_PROMPTS` in `features.ts`).
 - On a subscription the main thread caches with `ttl: "1h"`, subagents with the 5-minute default.

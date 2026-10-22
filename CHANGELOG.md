@@ -7,6 +7,9 @@
   inserting an effort-only message tracked in a ledger. Nothing is inserted into history, so the
   cache prefix and preserved thinking blocks stay valid, and a proxy restart changes nothing.
 - A turn's effort holds through its tool loop.
+- Claude Code's hidden prompts (the next-prompt suggestion sent after every turn, the idle recap,
+  the text-only summary) hold the model and effort and are not turns. Found in shadow mode: the
+  suggestion request alone would have moved a Haiku session back to Opus after every turn.
 - Subagents are routed by agent type at their first request (`subagentTiers`; Explore → Sonnet).
 - Forks are never switched: they inherit the parent's context, cache and thinking.
 - A downshift that would discard more than `holdThinkingTokens` of the current model's thinking

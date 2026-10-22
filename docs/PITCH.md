@@ -25,7 +25,7 @@ Details, including what the replay cannot see, are in [EVALUATION.md](EVALUATION
 
 ## The policy
 
-1. **Effort every turn, free.** Claude Code already sends the turn's effort in a per-turn control message at the tail of each request. The router rewrites that value, so nothing is inserted into history, the cache prefix stays byte-identical and preserved thinking stays valid.
+1. **Effort every turn, free.** Claude Code already attaches the turn's effort to a per-turn control message. The router sets that value, on the control message when it is the request's tail and otherwise on an effort-only message appended at the tail, so nothing is inserted into history, the cache prefix stays byte-identical and preserved thinking stays valid.
 2. **Model at cache boundaries.** Switch freely when there's no cache to lose: new conversations, every subagent, after compaction, after TTL expiry, small contexts. Otherwise downshift only when `savings × expected run − rebuild − expected return cost` is positive. Upgrade for quality whenever the turn is clearly hard, the user is in plan mode, or the previous task ended failing.
 3. **Signals beyond the prompt.** Agent type from the system prompt; forks never switched; downshifts that would discard the current model's thinking held; the user's `/effort` as a ceiling.
 

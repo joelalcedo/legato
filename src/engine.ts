@@ -179,7 +179,11 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
       model: currentModel,
       tier: currentTier,
       switched: false,
-      reasons: [`tool loop step ${features.toolLoopDepth}: hold ${currentModel}`],
+      reasons: [
+        features.machineTurn
+          ? `Claude Code's own prompt (suggestion, recap or compaction), not a user turn: hold ${currentModel}`
+          : `tool loop step ${features.toolLoopDepth}: hold ${currentModel}`,
+      ],
     };
   }
 

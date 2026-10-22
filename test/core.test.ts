@@ -134,9 +134,27 @@ describe('features', () => {
       '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>',
       'Another Claude session sent a message:\n<agent-message>ready</agent-message>',
       'This session is being continued from a previous conversation that ran out of context.',
+      '[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.] FIRST, think about what the user would want.',
+      'The user stepped away and is coming back. Recap in under 40 words, 1-2 plain sentences, what was done.',
+      'CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\nSummarize the conversation so far.',
     ]) {
-      assert.equal(extractFeatures(req([user('run the build'), done, user(text)])).newUserTurn, false, text.slice(0, 30));
+      const f = extractFeatures(req([user('run the build'), done, user(text)]));
+      assert.equal(f.newUserTurn, false, text.slice(0, 30));
+      assert.equal(f.machineTurn, true, text.slice(0, 30));
     }
+    assert.equal(extractFeatures(req([user('run the build'), done, user('now the tests')])).machineTurn, false);
+  });
+
+  it('holds the model and the effort for a prompt Claude Code sends on its own behalf', () => {
+    const done = { role: 'assistant', content: 'done' } as Message;
+    const suggestion = user('[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.] Review security carefully.');
+    const r = req([user('rename getUser to fetchUser'), done, suggestion]);
+    const s = newState();
+    s.model = 'claude-haiku-5-5';
+    const d = decide({ req: r, features: extractFeatures(r), state: s, cfg: defaultConfig(), now: NOW });
+    assert.equal(d.model, 'claude-haiku-5-5');
+    assert.equal(d.switched, false);
+    assert.match(d.reasons[0]!, /Claude Code's own prompt/);
   });
 
   it('classifies what the user typed, not the slash-command wrapper around it', () => {

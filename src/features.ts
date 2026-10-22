@@ -36,6 +36,11 @@ export interface MessagesRequest {
 export interface Features {
   /** Last message is a user turn carrying fresh human input (not only tool results). */
   newUserTurn: boolean;
+  /**
+   * Last message is text Claude Code wrote on its own behalf (a prompt suggestion, a recap,
+   * a compaction request), sent with the whole conversation. Held like a loop step.
+   */
+  machineTurn?: boolean;
   /** The latest fresh human text, with system reminders removed. Empty inside a tool loop. */
   userText: string;
   /** Claude Code's plan mode reminder is present in the current turn. */
@@ -163,7 +168,7 @@ export function freshUserText(m: Message): string {
 }
 
 const MACHINE_TEXT_RE =
-  /^(<task-notification>|\[SYSTEM NOTIFICATION|Another Claude session sent a message|The coordinator sent a message|This session is being continued from a previous conversation|<artifact-content-authored-by-others\/>|Base directory for this skill:)/;
+  /^(<task-notification>|\[SYSTEM NOTIFICATION|\[SUGGESTION MODE:|The user stepped away and is coming back|CRITICAL: Respond with TEXT ONLY|Another Claude session sent a message|The coordinator sent a message|This session is being continued from a previous conversation|<artifact-content-authored-by-others\/>|Base directory for this skill:)/;
 
 /** Remove Claude Code's wrappers around what the user typed, keeping the typed text. */
 function stripHarnessMarkup(t: string): string {
@@ -269,6 +274,8 @@ export function extractFeatures(req: MessagesRequest): Features {
   const freshIdx = lastFreshUserIndex(messages);
   const newUserTurn = !!last && last.role === 'user' && lastIdx === freshIdx;
   const userText = newUserTurn && last ? freshUserText(last) : '';
+  const machineTurn =
+    !newUserTurn && !!last && last.role === 'user' && !blocksOf(last.content).some((b) => b.type === 'tool_result');
 
   const current = countTaskSignals(messages, Math.max(0, freshIdx), messages.length);
   const prevFresh = freshIdx > 0 ? lastFreshUserIndex(messages, freshIdx) : -1;
@@ -285,6 +292,7 @@ export function extractFeatures(req: MessagesRequest): Features {
   let thinking: number | undefined;
   return {
     newUserTurn,
+    machineTurn,
     userText: userText.replace(OVERRIDE_RE, ''),
     planMode,
     toolLoopDepth: current.loopDepth,

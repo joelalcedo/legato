@@ -21,7 +21,7 @@ The reason it is not a one-liner: **each model has its own prompt cache.** Switc
 
 Two gears, applied by one `decide()` function that both the proxy and the analyzer call.
 
-**Effort, every turn, free.** Claude Code ends every request with a control message carrying the turn's effort. Switchyard rewrites that value. The message is the tail of the request, never part of the history, so nothing is inserted, the cached prefix stays byte-identical, and preserved thinking blocks stay valid. A mechanical turn on Opus runs at `medium` instead of `xhigh`; a hard one keeps the user's setting. This is the only lever that works on a long main thread.
+**Effort, every turn, free.** Claude Code attaches a control message carrying the turn's effort to each user turn. Switchyard sets the effort on that message when it is the request's tail, and otherwise appends an effort-only message at the tail. Either way the user and assistant history is untouched, so the cached prefix and preserved thinking blocks stay valid. A mechanical turn on Opus runs at `medium` instead of `xhigh`; a hard one keeps the user's setting. This is the only lever that works on a long main thread.
 
 **Model, at cache boundaries.** A switch happens only at a user turn, never inside a tool loop, and only when it is free or pays:
 
@@ -108,12 +108,13 @@ examples/          synthetic transcripts and the demo report
 
 ## Safety properties
 
-- **Nothing inserted into history.** Effort is set on the control message Claude Code already sends. No ledger, no prefix edits, nothing lost on a proxy restart.
+- **Nothing inserted into history.** Effort is set on Claude Code's own control message or on a message appended at the tail. No ledger, no prefix edits, nothing lost on a proxy restart.
 - **Fail-open.** If the API rejects a rewritten request (400, 404, 422, 529), the proxy retries once with exactly what Claude Code sent, and records that it ran as sent.
 - **No mid-loop switches.** Thinking and cache stay with the model that produced them.
 - **Shadow mode** forwards Claude Code's request bytes untouched and logs `forwarded: "original"` on every entry, so "nothing was rewritten" is checkable line by line.
 - **Every request is logged**, including the ones Claude Code abandons (status 499) and upstream failures (502).
 - **Background requests** (no tools) pass through.
+- **Claude Code's hidden prompts** (the next-prompt suggestion it sends after every turn, idle recaps, summaries) hold the current model and effort and are not counted as turns.
 
 ## Limitations
 
