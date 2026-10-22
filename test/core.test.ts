@@ -154,7 +154,7 @@ describe('features', () => {
     const d = decide({ req: r, features: extractFeatures(r), state: s, cfg: defaultConfig(), now: NOW });
     assert.equal(d.model, 'claude-haiku-5-5');
     assert.equal(d.switched, false);
-    assert.match(d.reasons[0]!, /Claude Code's own prompt/);
+    assert.match(d.reasons[0]!, /Claude Code's own housekeeping prompt/);
   });
 
   it('classifies what the user typed, not the slash-command wrapper around it', () => {
@@ -355,7 +355,7 @@ describe('agents', () => {
     };
     const d = decide({ req: r, features: extractFeatures(r), state: newState(), cfg, now: NOW });
     assert.equal(d.model, 'claude-sonnet-5-5');
-    assert.match(d.reasons[0]!, /Explore agent -> sonnet by agent type/);
+    assert.match(d.reasons[0]!, /an Explore agent, which runs on Sonnet/);
   });
 
   it('never switches a fork, which carries its parent context and thinking', () => {
@@ -363,7 +363,7 @@ describe('agents', () => {
     const d = decide({ req: r, features: extractFeatures(r), state: newState(), cfg, now: NOW, contextTokens: 300_000 });
     assert.equal(d.model, 'claude-opus-5-5');
     assert.equal(d.switched, false);
-    assert.match(d.reasons.join(' '), /fork: holds claude-opus-5-5/);
+    assert.match(d.reasons.join(' '), /a fork of the parent conversation: it inherits 300K tokens of Opus 5.5's context/);
   });
 
   it('holds a downshift that would discard the current model\'s thinking, and lowers effort instead', () => {
@@ -377,7 +377,8 @@ describe('agents', () => {
     const held = decide({ req: r, features: extractFeatures(r), state: s, cfg, now: NOW, contextTokens: 25_000 });
     assert.equal(held.model, 'claude-opus-5-5');
     assert.equal(held.effort, 'medium');
-    assert.match(held.reasons.join(' '), /drop ~40K tokens of its thinking/);
+    assert.match(held.reasons.join(' '), /throw away about 40K tokens of its thinking/);
+    assert.deepEqual(held.held?.why, 'thinking');
     const free = decide({ req: r, features: extractFeatures(r), state: s, cfg: { ...cfg, holdThinkingTokens: 1_000_000 }, now: NOW, contextTokens: 25_000 });
     assert.equal(free.model, 'claude-sonnet-5-5');
   });

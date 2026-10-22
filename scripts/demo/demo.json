@@ -1,0 +1,10 @@
+{
+ "cols": 96,
+ "rows": 24,
+ "title": "legato",
+ "steps": [
+  {"cmd": "legato explain \"add a loading state to the table\" --context 25000 --effort xhigh", "out_file": "out1.txt", "hold": 3.5},
+  {"cmd": "legato explain \"add a loading state to the table\" --context 180000 --effort xhigh", "out_file": "out2.txt", "hold": 4.0},
+  {"cmd": "legato explain \"Why does the ball tunnel through the paddle at high speed? Explain the trade-offs between the fixes and implement the most robust one\" --context 180000 --effort xhigh", "out_file": "out3.txt", "hold": 4.0}
+ ]
+}

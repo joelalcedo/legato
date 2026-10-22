@@ -35,8 +35,11 @@
 - Requests Claude Code abandons are logged with status 499; upstream failures with 502.
 - Session state persists under `~/.legato/state`.
 - A per-session status file under `~/.legato/status` drives `legato statusline`.
-- The status line is written in words: `running on Sonnet 5.5 at medium effort instead of Opus 5.5 ·
-  saved $0.58 over 3 turns`; held switches show the rebuild cost.
+- Everything a person reads comes from `src/words.ts`, in plain sentences: the status line
+  (`Legato: switched from Opus 5.5 to Sonnet 5.5 for this task, using medium effort instead of
+  xhigh · saved $0.58 this session`), the reasons in the decision log, `legato explain`, the proxy
+  log and the dashboard. No arrows, no "downshift", "rebuild" or "economics"; a held switch says
+  what it would have cost in dollars.
 - `legato claude`: starts the proxy if needed and launches Claude Code through it as
   "Dynamic mode", with the environment that stops Claude Code assuming a 200K window for a name
   it doesn't know. Warns when the running proxy is an older build than the installed code.
@@ -49,6 +52,9 @@
 - Removed the stale 64K `max_tokens` clamp for Haiku 5.5.
 
 ### Analyzer
+- `analyze --json` includes one record per task (a user turn and the requests that follow it, or a
+  subagent run) with its kind, models, effort and cost with and without routing, and the
+  cumulative cost series. `scripts/charts.R` draws the README charts from it.
 - Transcript reader rewritten for Claude Code 2.1.28x to 2.1.30x: per-block response lines,
   `parentUuid` branches, resumed sessions and forks, fork context references, plan-mode
   attachments, per-request effort, responses without final usage.
@@ -57,4 +63,8 @@
 - Agent type and fork flag read from each subagent's `.meta.json`.
 
 ### Docs
-- README restructured; `docs/EVALUATION.md` and `docs/ROADMAP.md` added.
+- README: the definition, a demo GIF rendered from real `legato explain` output
+  (`scripts/demo`), quick start, how it works, and two charts of what tasks cost with and without
+  Legato. `docs/REFERENCE.md` holds the commands, options and limitations.
+- `.claude/agents/plain-english-reviewer.md`: an adversarial reviewer (English teacher and
+  economist) for everything a person reads, including the CLI's own sentences.

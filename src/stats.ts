@@ -1,5 +1,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { displayName, effortClause, modelClause, money, holdClause, type Hold } from './words.js';
+
+export { displayName };
 
 export interface DecisionLogEntry {
   ts: string;
@@ -54,7 +57,11 @@ export interface SessionStatus {
   /** HTTP status of the last request, so a failing session says so instead of showing stale numbers. */
   lastStatus?: number;
   switched: boolean;
-  /** The engine's first reason, which names a hold or a switch. */
+  /** Model the session's main thread was on before the last decision. */
+  from?: string;
+  /** A switch the policy wanted but did not take, and why. */
+  held?: Hold;
+  /** The engine's first reason, in plain words. */
   reason: string;
   turns: number;
   requests: number;
@@ -62,44 +69,33 @@ export interface SessionStatus {
   baselineUsd: number;
 }
 
-export function displayName(model: string): string {
-  const m = /claude-(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d+))?/.exec(model);
-  if (!m) return model;
-  return `${m[1]![0]!.toUpperCase()}${m[1]!.slice(1)} ${m[2]}${m[3] ? '.' + m[3] : ''}`;
-}
-
 /**
- * One line for Claude Code's status line, in words: what this session is running on, how that
- * differs from what Claude Code asked for, and what it has saved so far.
+ * One line for Claude Code's status line: what this task runs on, whether that is a change,
+ * the effort, and what the session has saved so far.
  *
- *   ⇄ running on Sonnet 5.5 at medium effort instead of Opus 5.5 · saved $0.57 over 3 turns
- *   ⇄ running on Opus 5.5 at medium effort (asked xhigh) · switch held: rebuild $0.97 · saved $0.31 over 7 turns
- *   ⇄ dynamic: running on Haiku 5.5 at low effort · saved $0.70 over 1 turn
+ *   Legato: switched from Opus 5.5 to Sonnet 5.5 for this task, using medium effort instead of xhigh · saved $0.58 this session
+ *   Legato: staying on Opus 5.5 for this task, using medium effort instead of xhigh (a switch to Sonnet 5.5 would cost $0.95 more than it saves) · saved $0.31 this session
+ *   Legato: Haiku 5.5 for this task, using low effort · saved $0.70 this session
  */
 export function formatStatus(s: SessionStatus): string {
   if (s.lastStatus !== undefined && s.lastStatus >= 400 && s.lastStatus !== 499) {
-    const what = s.lastStatus === 404 ? `the API does not know the model "${s.incoming}"` : `HTTP ${s.lastStatus} from the API`;
-    const hint = s.through === false ? ` · ${s.reason}; if you just rebuilt legato, restart the proxy` : '';
-    return `⇄ legato: last request failed, ${what}${hint}`;
+    const what = s.lastStatus === 404 ? `the API does not know the model "${s.incoming}"` : `the API answered HTTP ${s.lastStatus}`;
+    const hint = s.through === false ? `; if you just rebuilt legato, restart the proxy` : '';
+    return `Legato: the last request failed, ${what}${hint}`;
   }
-  if (s.through === false) return `⇄ legato: forwarding "${s.incoming}" as sent (${s.reason})`;
+  if (s.through === false) return `Legato: not routing "${s.incoming}" (${s.reason})`;
   const saved = s.baselineUsd - s.costUsd;
   const shadow = s.mode === 'shadow';
-  let line = `⇄ ${s.alias ? s.alias + ': ' : ''}${shadow ? 'shadow: would run' : 'running'} on ${displayName(s.model)}`;
-  if (s.effort) line += ` at ${s.effort} effort`;
-  // With an alias the user delegated the choice, so there is nothing to compare against.
-  if (s.alias) {
-    // nothing
-  } else if (s.model !== s.incoming) line += ` instead of ${displayName(s.incoming)}`;
-  else if (s.effort && s.incomingEffort && s.effort !== s.incomingEffort) line += ` (asked ${s.incomingEffort})`;
-  else line += ', as asked';
-  if (s.reason.startsWith('hold ')) {
-    const rebuild = /rebuild \$([\d.]+)/.exec(s.reason);
-    const thinking = /drop ~(\d+K) tokens/.exec(s.reason);
-    line += thinking ? ` · switch held: ${thinking[1]} of thinking` : rebuild ? ` · switch held: rebuild $${Number(rebuild[1]).toFixed(2)}` : ' · switch held';
-  }
-  const turns = `${s.turns} turn${s.turns === 1 ? '' : 's'}`;
-  return `${line} · ${shadow ? 'would save' : 'saved'} $${saved.toFixed(2)} over ${turns}`;
+  // The alias ("Dynamic mode") is not a model, so a first pick is not a switch from it.
+  const from = s.from ?? (s.alias ? undefined : s.incoming);
+  const h = { from, to: s.model, effort: s.effort, asked: s.incomingEffort, switched: s.switched, held: s.held };
+  let line = `Legato${shadow ? ' (shadow)' : ''}: ${modelClause(h, shadow ? 'conditional' : 'past')}${effortClause(h)}`;
+  if (s.held) line += ` (${holdClause(s.held)})`;
+  const tally =
+    saved >= -0.005
+      ? `${shadow ? 'would have saved' : 'saved'} ${money(Math.max(0, saved))} this session`
+      : `${shadow ? 'would have spent' : 'spent'} ${money(-saved)} more than Claude Code alone this session`;
+  return `${line} · ${tally}`;
 }
 
 const SESSION_ID_RE = /^[0-9A-Za-z_-]{1,80}$/;

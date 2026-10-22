@@ -12,6 +12,7 @@ import { sessionIdOf, SessionStore, type SessionRecord } from './sessions.js';
 import { resplit } from './simulate.js';
 import { usageFromJson, UsageTap } from './sse.js';
 import { StatsStore, writeSessionStatus, type DecisionLogEntry } from './stats.js';
+import { capitalize, headline } from './words.js';
 
 const HOP_BY_HOP = new Set([
   'host',
@@ -327,6 +328,8 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
         incomingEffort: features.incomingEffort,
         alias,
         switched: entry.switched,
+        from: decision.from,
+        held: decision.held,
         reason: decision.reasons[0] ?? '',
         through: decision.route,
         lastStatus: status,
@@ -335,10 +338,11 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     }
 
     if (decision.route && (decision.switched || features.newUserTurn)) {
-      log(
-        `[legato] ${original.model} -> ${entry.routed}${entry.effort ? '/' + entry.effort : ''}` +
-          `${entry.switched ? ' (switch)' : ''}  ${decision.reasons.join(' | ')}`,
+      const line = headline(
+        { from: decision.from, to: entry.routed, effort: entry.effort, asked: features.incomingEffort, switched: entry.switched, held: decision.held },
+        'past',
       );
+      log(`[legato] ${line} ${decision.reasons.map(capitalize).join('. ')}.`);
     }
   }
 
@@ -411,7 +415,7 @@ function dashboard(store: StatsStore, cfg: RouterConfig): string {
   const rows = store.recent
     .slice(0, 60)
     .map(
-      (e) => `<tr><td class="mono">${esc(e.ts.slice(11, 19))}</td><td>${pill(e.routed)}${e.effort ? ` <span class="mono">${esc(e.effort)}</span>` : ''}${e.switched ? ' ⇄' : ''}${e.status >= 400 ? ` <span class="mono">${e.status === CLIENT_CLOSED ? 'closed by client' : e.status}</span>` : ''}</td>
+      (e) => `<tr><td class="mono">${esc(e.ts.slice(11, 19))}</td><td>${pill(e.routed)}${e.effort ? ` <span class="mono">${esc(e.effort)}</span>` : ''}${e.switched ? ' <span class="mono">switched</span>' : ''}${e.status >= 400 ? ` <span class="mono">${e.status === CLIENT_CLOSED ? 'closed by client' : e.status}</span>` : ''}</td>
 <td>${e.agentType && e.agentType !== 'main' ? `<span class="reasons">${esc(e.agentType)}${e.arm ? ' · arm ' + e.arm : ''}</span> ` : ''}${e.userPreview ? esc(e.userPreview) : '<span class="reasons">tool loop</span>'}<div class="reasons">${esc(e.reasons.join(' · '))}</div></td>
 <td class="num">${int(e.promptTokens)}</td><td class="num">${usd(e.costUsd)}</td><td class="num">${usd(e.baselineUsd)}</td></tr>`,
     )
@@ -428,7 +432,7 @@ function dashboard(store: StatsStore, cfg: RouterConfig): string {
 </div>
 <section><h2>Model mix</h2><p class="sub">Share of requests per tier</p>${mixBar(counts)}</section>
 <section><h2>Recent decisions</h2><p class="sub">Newest first. Refreshes every 5 seconds.</p><div class="scroll"><table>
-<tr><th>Time</th><th>Routed to</th><th>Turn and reasoning</th><th class="num">Prompt tokens</th><th class="num">Cost</th><th class="num">Unrouted</th></tr>${rows}</table></div></section>`,
+<tr><th>Time</th><th>Ran on</th><th>Task and why</th><th class="num">Prompt tokens</th><th class="num">Cost</th><th class="num">Unrouted</th></tr>${rows}</table></div></section>`,
     '<meta http-equiv="refresh" content="5">',
   );
 }

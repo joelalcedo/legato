@@ -51,10 +51,28 @@ routing; rebuild cost is included.
 | + the user's /effort is a ceiling; forks inherit the parent's context | | **$691 (12.7%)** | 163 | $89 |
 | Same policy, next window | Sep 21 to Oct 21 | $473 (9.3%) | 151 (117) | $82 |
 | + route Explore subagents to Sonnet by type; hold forks; hold downshifts that drop thinking | Sep 21 to Oct 21 | **$504 (9.9%)** | 173 (139) | $82 |
+| Same policy, the window the README charts show | Sep 21 to Oct 22 | $529 (10.2%) | 180 (143) | $86 |
 
 The gap between 12.7% and 9.9% is the data, not the policy: the earlier window had sessions
 started on Fable 5.1, which the router moves to Opus at the first request, and that one kind of
 switch was 46% of its savings. On sessions started on Opus the saving is about 8% in both windows.
+
+By kind of task, in the README's window (a task is a user turn and the requests that follow it,
+or one subagent run; costs are means at list prices, rebuilds included):
+
+| Task | Count | Claude Code alone | With Legato | Saved per task |
+| - | - | - | - | - |
+| Quick task (commit, find a file) | 13 | $2.84 | $0.71 | $2.13 |
+| Explore agent run | 26 | $2.42 | $1.21 | $1.20 |
+| General-purpose agent run | 338 | $8.51 | $7.71 | $0.80 |
+| Ordinary coding task | 703 | $1.74 | $1.40 | $0.34 |
+| Design, plan or large change | 82 | $1.95 | $2.00 | -$0.04 |
+| Find why something fails | 370 | $0.85 | $0.97 | -$0.12 |
+
+The two hard kinds cost more with Legato because a hard task that arrives while the conversation
+is on Sonnet pays the rebuild to bring Opus back. The earlier switch to Sonnet already priced that
+return in (`returnProbability`), so the pair is still ahead; the per-task view just lands the bill
+on the hard task.
 
 What the router declined: 498 downshifts in the current window, because the rebuild would have
 cost more than the cheaper model saved. Effort changes: 613 turns run at a lower effort than the

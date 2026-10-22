@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { displayName, formatStatus, type SessionStatus } from '../src/stats.js';
+import { money } from '../src/words.js';
 
 const base: SessionStatus = {
   sessionId: 's',
@@ -11,7 +12,7 @@ const base: SessionStatus = {
   effort: 'medium',
   incomingEffort: 'xhigh',
   switched: true,
-  reason: 'classified sonnet/medium',
+  reason: 'looks like an ordinary coding task',
   turns: 3,
   requests: 30,
   costUsd: 3.9235796,
@@ -25,49 +26,85 @@ describe('status line', () => {
     assert.equal(displayName('dynamic'), 'dynamic');
   });
 
-  it('says in words what runs, instead of what, and what was saved', () => {
-    assert.equal(formatStatus(base), '⇄ running on Sonnet 5.5 at medium effort instead of Opus 5.5 · saved $0.58 over 3 turns');
+  it('writes money the way people say it', () => {
+    assert.equal(money(0.97), '$0.97');
+    assert.equal(money(0.039), '4¢');
+    assert.equal(money(0.001), 'under 1¢');
+    assert.equal(money(-0.95), '-$0.95');
+    assert.equal(money(12.5), '$12.50');
   });
 
-  it('explains a held switch with the rebuild cost and the effort it adjusted instead', () => {
+  it('says what switched, the effort, and what the session has saved', () => {
+    assert.equal(
+      formatStatus(base),
+      'Legato: switched from Opus 5.5 to Sonnet 5.5 for this task, using medium effort instead of xhigh · saved $0.58 this session',
+    );
+  });
+
+  it('explains a held switch in money and says the effort went down instead', () => {
     const held: SessionStatus = {
       ...base,
       model: 'claude-opus-5-5',
       switched: false,
-      reason: 'hold claude-opus-5-5: downshift nets $-0.950 (rebuild $0.970, saves $0.0390/request) - adjusting effort instead',
+      held: { model: 'claude-sonnet-5-5', why: 'cost', rebuildUsd: 0.97, lossUsd: 0.95 },
       turns: 7,
       costUsd: 2.0,
       baselineUsd: 2.31,
     };
     assert.equal(
       formatStatus(held),
-      '⇄ running on Opus 5.5 at medium effort (asked xhigh) · switch held: rebuild $0.97 · saved $0.31 over 7 turns',
+      'Legato: staying on Opus 5.5 for this task, using medium effort instead of xhigh (a switch to Sonnet 5.5 would cost $0.95 more than it saves) · saved $0.31 this session',
+    );
+    const thinking: SessionStatus = { ...held, held: { model: 'claude-sonnet-5-5', why: 'thinking', thinkingTokens: 40_000 } };
+    assert.match(formatStatus(thinking), /\(a switch to Sonnet 5\.5 would throw away this conversation's thinking\)/);
+  });
+
+  it('says the effort is the one you set when nothing changed', () => {
+    const same: SessionStatus = { ...base, model: 'claude-opus-5-5', effort: 'xhigh', switched: false, turns: 1 };
+    assert.equal(formatStatus(same), 'Legato: Opus 5.5 for this task, using xhigh effort, as you set · saved $0.58 this session');
+  });
+
+  it('does not call the first pick a switch from the "Dynamic mode" alias, and marks shadow mode', () => {
+    const aliased: SessionStatus = { ...base, alias: 'Dynamic mode', incoming: 'Dynamic mode', model: 'claude-haiku-5-5', effort: 'low', turns: 1 };
+    assert.equal(formatStatus(aliased), 'Legato: Haiku 5.5 for this task, using low effort instead of xhigh · saved $0.58 this session');
+    const later: SessionStatus = { ...aliased, from: 'claude-opus-5-5' };
+    assert.equal(
+      formatStatus(later),
+      'Legato: switched from Opus 5.5 to Haiku 5.5 for this task, using low effort instead of xhigh · saved $0.58 this session',
+    );
+    const shadow: SessionStatus = { ...base, mode: 'shadow' };
+    assert.equal(
+      formatStatus(shadow),
+      'Legato (shadow): would switch from Opus 5.5 to Sonnet 5.5 for this task, using medium effort instead of xhigh · would have saved $0.58 this session',
     );
   });
 
-  it('says "as asked" when nothing was changed', () => {
-    const same: SessionStatus = { ...base, model: 'claude-opus-5-5', effort: 'xhigh', switched: false, reason: 'classified opus/high', turns: 1 };
-    assert.equal(formatStatus(same), '⇄ running on Opus 5.5 at xhigh effort, as asked · saved $0.58 over 1 turn');
-  });
-
-  it('drops the comparison when Claude Code was launched with an alias, and marks shadow mode', () => {
-    const aliased: SessionStatus = { ...base, alias: 'dynamic', model: 'claude-haiku-5-5', effort: 'low', turns: 1 };
-    assert.equal(formatStatus(aliased), '⇄ dynamic: running on Haiku 5.5 at low effort · saved $0.58 over 1 turn');
-    const shadow: SessionStatus = { ...base, mode: 'shadow' };
-    assert.equal(formatStatus(shadow), '⇄ shadow: would run on Sonnet 5.5 at medium effort instead of Opus 5.5 · would save $0.58 over 3 turns');
+  it('admits when the session has cost more so far', () => {
+    const behind: SessionStatus = { ...base, costUsd: 4.8, baselineUsd: 4.5 };
+    assert.equal(
+      formatStatus(behind),
+      'Legato: switched from Opus 5.5 to Sonnet 5.5 for this task, using medium effort instead of xhigh · spent $0.30 more than Claude Code alone this session',
+    );
   });
 
   it('says so when the last request failed or was forwarded as sent, instead of showing stale numbers', () => {
-    const stale: SessionStatus = { ...base, incoming: 'dynamic', model: 'dynamic', through: false, lastStatus: 404, reason: 'unrecognized model family' };
+    const stale: SessionStatus = {
+      ...base,
+      incoming: 'dynamic',
+      model: 'dynamic',
+      through: false,
+      lastStatus: 404,
+      reason: 'not a Claude model Legato knows, sent as is',
+    };
     assert.equal(
       formatStatus(stale),
-      '⇄ legato: last request failed, the API does not know the model "dynamic" · unrecognized model family; if you just rebuilt legato, restart the proxy',
+      'Legato: the last request failed, the API does not know the model "dynamic"; if you just rebuilt legato, restart the proxy',
     );
     const passthrough: SessionStatus = { ...stale, lastStatus: 200 };
-    assert.equal(formatStatus(passthrough), '⇄ legato: forwarding "dynamic" as sent (unrecognized model family)');
+    assert.equal(formatStatus(passthrough), 'Legato: not routing "dynamic" (not a Claude model Legato knows, sent as is)');
     const overloaded: SessionStatus = { ...base, lastStatus: 529, through: true };
-    assert.equal(formatStatus(overloaded), '⇄ legato: last request failed, HTTP 529 from the API');
+    assert.equal(formatStatus(overloaded), 'Legato: the last request failed, the API answered HTTP 529');
     // A request the user cancelled is not a failure.
-    assert.match(formatStatus({ ...base, lastStatus: 499, through: true }), /^⇄ running on Sonnet 5\.5/);
+    assert.match(formatStatus({ ...base, lastStatus: 499, through: true }), /^Legato: switched from Opus 5\.5/);
   });
 });

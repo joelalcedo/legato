@@ -14,6 +14,7 @@ import { usd } from './html.js';
 import type { Effort } from './models.js';
 import { BUILD, startProxy } from './proxy.js';
 import { displayName, formatStatus, readSessionStatus, readStats } from './stats.js';
+import { capitalize, headline, money } from './words.js';
 
 const HELP = `legato: cache-aware model routing for Claude Code
 
@@ -247,7 +248,7 @@ async function main(): Promise<void> {
       const cfg = loadConfig(overridesFrom(flags));
       const p = await startProxy({ cfg });
       process.stderr.write(
-        `legato ${cfg.mode} on ${p.url} -> ${cfg.upstream} (preset ${cfg.preset}, TTL ${cfg.cacheTtlSeconds}s)\n` +
+        `legato ${cfg.mode} on ${p.url}, forwarding to ${cfg.upstream} (preset ${cfg.preset}, TTL ${cfg.cacheTtlSeconds}s)\n` +
           `  run:        legato claude   (or ANTHROPIC_BASE_URL=${p.url} claude --model "${cfg.launchModel}")\n` +
           `  dashboard:  ${p.url}/legato\n`,
       );
@@ -272,7 +273,9 @@ async function main(): Promise<void> {
         since,
       });
       if (flags.json) {
-        process.stdout.write(JSON.stringify({ totals: result.totals, conversations: result.conversations, notable: result.notable.slice(0, 200) }, null, 2) + '\n');
+        process.stdout.write(
+          JSON.stringify({ totals: result.totals, conversations: result.conversations, turns: result.turns, series: result.series, notable: result.notable.slice(0, 200) }, null, 2) + '\n',
+        );
       } else {
         process.stdout.write(textReport(result, cfg, dir) + '\n');
       }
@@ -313,15 +316,20 @@ async function main(): Promise<void> {
         ],
       };
       const d = decide({ req, features: extractFeatures(req), state, cfg, now, contextTokens: ctx });
-      process.stdout.write(
-        `${current} -> ${d.model}${d.effort ? ' / effort ' + d.effort : ''}${d.switched ? '  (switch)' : ''}\n` +
-          d.reasons.map((r) => `  - ${r}`).join('\n') +
-          '\n' +
-          (d.economics
-            ? `  economics: context ${d.economics.contextTokens} tokens, rebuild ${usd(d.economics.rebuildUsd)}, ` +
-              `saving ${usd(d.economics.perRequestSavingUsd, 4)}/request, net ${usd(d.economics.netUsd)}\n`
-            : ''),
-      );
+      const h = { from: current, to: d.model, effort: d.effort, asked: askedEffort, switched: d.switched, held: d.held };
+      let out = headline(h) + '\n' + d.reasons.map((r) => `  ${capitalize(r)}.`).join('\n') + '\n';
+      if (d.economics) {
+        const e = d.economics;
+        const n = cfg.expectedRunRequests;
+        const costs = [
+          ...(e.rebuildUsd < 0.005 ? [] : [`${money(e.rebuildUsd)} to rebuild the cache`]),
+          `${money(e.returnUsd)} to switch back later`,
+        ];
+        out +=
+          `  Arithmetic: ${money(e.perRequestSavingUsd)} saved a request × ${n} requests = ${money(e.perRequestSavingUsd * n)}, ` +
+          `minus ${costs.join(' and ')} = ${money(e.netUsd)} net${e.rebuildUsd < 0.005 ? ' (the cache rebuild costs nothing here)' : ''}.\n`;
+      }
+      process.stdout.write(out);
       return;
     }
 
@@ -356,17 +364,19 @@ async function main(): Promise<void> {
       }
       // A session the proxy has never seen must not borrow other sessions' numbers.
       if (sessionId) {
-        process.stdout.write('⇄ legato: this session is not going through the proxy\n');
+        process.stdout.write('Legato: this session is not going through the proxy\n');
         return;
       }
       const s = readStats(cfg.dataDir);
       if (!s || !s.last) {
-        process.stdout.write('⇄ legato idle\n');
+        process.stdout.write('Legato: idle\n');
         return;
       }
       const saved = s.baselineUsd - s.costUsd;
       const share = s.baselineUsd > 0 ? ` (${((saved / s.baselineUsd) * 100).toFixed(0)}%)` : '';
-      process.stdout.write(`⇄ all sessions: last ${displayName(s.last.routed)}${s.last.effort ? ' · ' + s.last.effort : ''} · saved ${usd(saved)}${share}\n`);
+      process.stdout.write(
+        `Legato: all sessions, last on ${displayName(s.last.routed)}${s.last.effort ? ` at ${s.last.effort} effort` : ''} · saved ${usd(saved)}${share}\n`,
+      );
       return;
     }
 

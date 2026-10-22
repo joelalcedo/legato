@@ -5,16 +5,19 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 ## Commands
 
 - `npm install && npm run build`: compile to `dist/`
-- `npm test`: node:test suites via tsx (82 tests)
+- `npm test`: node:test suites via tsx (84 tests)
 - `npm run typecheck`
 - `npm run demo`: replay the synthetic sample transcripts and write `examples/sample-report.html`
 - `node dist/cli.js claude`: start the proxy if needed and launch Claude Code through it as "Dynamic mode" (the user runs this; the auto-mode classifier in this repo's sessions blocks starting servers)
 - `node dist/cli.js explain "<prompt>" --context 150000`: inspect one decision
-- `node dist/cli.js analyze --since 30d`: replay real `~/.claude/projects` transcripts (about 20s for 30 days)
+- `node dist/cli.js analyze --since 30d`: replay real `~/.claude/projects` transcripts (about 35s for 30 days); `--json` adds per-task records and the cost series
+- `Rscript scripts/charts.R analyze.json docs/img`: the README charts (ggplot2, house style from the alcyone research charts)
+- `/usr/bin/python3 scripts/demo/make_gif.py scripts/demo/demo.json docs/demo.gif`: the README GIF, from the captured `explain` output in `scripts/demo/`
 
 ## Layout
 
 - `src/engine.ts`: the decision function and cache economics (`decide`, `switchEconomics`, `observe`). Start here.
+- `src/words.ts`: every sentence a person sees (model names, money, the classifier's signals in words, the status line clauses, `headline()`). Engine reasons, the status line, `explain`, the proxy log and the dashboard all go through it.
 - `src/classifier.ts`: heuristic difficulty classifier, plus `classifyWithModel` (Haiku 5.5, optional).
 - `src/features.ts`: signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks, thinking volume.
 - `src/rewrite.ts`: applies a decision to a request; appends the turn's effort as an effort-only system message at the tail. It never edits Claude Code's own control message (DESIGN.md, "Setting the effort": an edited copy cost about 11K tokens of cache writes per turn in live traffic).
@@ -23,12 +26,14 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `src/stats.ts`: decision log entries, running totals, status files for `legato statusline`.
 - `src/analyzer/`: transcript reader (Claude Code 2.1.28x to 2.1.30x formats), replay, text and HTML reports.
 - `src/pricing.ts`, `src/models.ts`: prices and model capabilities. Update when models change.
-- `docs/DESIGN.md`: derivation of the switching rule. `docs/EVALUATION.md`: results on real data. `docs/ROADMAP.md`. `docs/PITCH.md`.
+- `docs/DESIGN.md`: derivation of the switching rule. `docs/EVALUATION.md`: results on real data. `docs/REFERENCE.md`: commands, options, limitations. `docs/ROADMAP.md`. `docs/PITCH.md`.
+- `.claude/agents/plain-english-reviewer.md`: adversarial reviewer (English teacher and economist) for the README, docs and the CLI's own sentences. Run it after changing anything a person reads.
 
 ## Conventions
 
 - The proxy and analyzer must call the same `decide()`; never fork policy logic between them.
-- Every decision appends human-readable strings to `reasons`; keep them specific (numbers, not adjectives).
+- Every decision appends plain sentences to `reasons`, with the numbers in them and the models named as Claude Code names them (`displayName`). No arrows, no jargon ("downshift", "rebuild", "economics", "tier", "hold"), nothing a first-time user would have to look up. The same rule covers the status line, `explain`, the proxy log, the dashboard and the docs.
+- Work goes straight to `main`: commit and push, no pull requests to wait on (the user asked for this on 2026-10-22).
 - Anything that changes request bytes must be deterministic across requests, or it breaks the prompt cache and can invalidate preserved thinking. Never insert into or reorder the user/assistant history. Add a prefix-stability test for any change to request bytes.
 - Savings estimates should err low: when unsure, price tokens as cache writes. Assumptions (effort's effect on output) go on their own labelled line, never in the headline.
 - A policy change comes with `analyze --since <fixed date>` before and after, on the same window.

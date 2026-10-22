@@ -1,0 +1,4 @@
+Switch from Opus 5.5 to Sonnet 5.5 for this task, using medium effort instead of xhigh.
+  Looks like an ordinary coding task.
+  Switching to Sonnet 5.5: it saves about 2¢ a request and costs 5¢ to rebuild the cache, about 7¢ ahead over the next 8 requests.
+  Arithmetic: 2¢ saved a request × 8 requests = $0.15, minus 5¢ to rebuild the cache and 4¢ to switch back later = 7¢ net.

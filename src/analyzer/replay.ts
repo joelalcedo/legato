@@ -49,8 +49,33 @@ export interface ConversationResult {
   tierMix: Record<string, number>;
 }
 
+/** One task: a user turn and the tool-loop requests that follow it, or a subagent's whole run. */
+export interface TurnResult {
+  conversation: string;
+  /** `main`, or the subagent type (`Explore`, `general-purpose`, ...). */
+  agentType: string;
+  at: number;
+  /** The tier the policy wanted for this task, before any hold. */
+  wanted?: Tier;
+  /** The classifier's signals, when the heuristic ran. */
+  signals: string[];
+  from: string;
+  to: string;
+  effortAsked?: string;
+  effortUsed?: string;
+  switched: boolean;
+  held: boolean;
+  freeSwitch: boolean;
+  requests: number;
+  /** Prompt size at the task's first request. */
+  promptTokens: number;
+  baselineUsd: number;
+  routedUsd: number;
+}
+
 export interface ReplayResult {
   conversations: ConversationResult[];
+  turns: TurnResult[];
   totals: Omit<ConversationResult, 'id' | 'project' | 'isSubagent' | 'start' | 'end'> & {
     conversations: number;
     subagents: number;
@@ -69,6 +94,7 @@ export interface ReplayResult {
 
 export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOptions): ReplayResult {
   const results: ConversationResult[] = [];
+  const turns: TurnResult[] = [];
   const notable: NotableDecision[] = [];
   const unpriced = new Set<string>();
   const points: { t: number; baseline: number; routed: number }[] = [];
@@ -80,6 +106,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
     const state = newState();
     let effort: Effort | undefined;
     let ttl = cfg.cacheTtlSeconds;
+    let turn: TurnResult | undefined;
     const r: ConversationResult = {
       id: conv.id,
       project: conv.project,
@@ -149,8 +176,27 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
         const effortChanged = !!d.effort && d.effort !== asked;
         effort = d.effort ?? asked;
         if (effortChanged) r.effortChanges++;
-        const held = d.economics && !d.switched && d.reasons.some((x) => x.startsWith('hold '));
+        const held = !!d.held && d.held.why !== 'weak-upgrade';
         if (held) heldDownshifts++;
+        if (turn) turns.push(turn);
+        turn = {
+          conversation: conv.id,
+          agentType: conv.isSubagent ? (conv.agentType ?? 'subagent') : 'main',
+          at: t,
+          wanted: d.route ? (d.classification?.tier ?? d.tier) : undefined,
+          signals: d.route ? (d.classification?.signals ?? []) : [],
+          from: state.model ?? incoming,
+          to: routed,
+          effortAsked: rq.effort,
+          effortUsed: d.effort ?? rq.effort,
+          switched: !continuous,
+          held,
+          freeSwitch: !!d.freeSwitch,
+          requests: 0,
+          promptTokens: prompt,
+          baselineUsd: 0,
+          routedUsd: 0,
+        };
         if (!continuous || held || (effortChanged && notable.length < 400)) {
           notable.push({
             conversation: conv.id,
@@ -189,7 +235,13 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
       r.start = Math.min(r.start, t);
       r.end = Math.max(r.end, t);
       points.push({ t, baseline: baselineUsd, routed: routedUsd });
+      if (turn) {
+        turn.requests++;
+        turn.baselineUsd += baselineUsd;
+        turn.routedUsd += routedUsd;
+      }
     }
+    if (turn) turns.push(turn);
     if (r.requests) results.push(r);
   }
 
@@ -204,6 +256,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
 
   return {
     conversations: results.sort((a, b) => b.baselineUsd - a.baselineUsd),
+    turns: turns.sort((a, b) => a.at - b.at),
     totals: {
       conversations: results.filter((r) => !r.isSubagent).length,
       subagents: results.filter((r) => r.isSubagent).length,

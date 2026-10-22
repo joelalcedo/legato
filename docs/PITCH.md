@@ -16,7 +16,7 @@ Each model has its own cache. Switching mid-conversation re-reads everything unc
 
 Replayed on 30 days of one developer's real Claude Code history (267 sessions, 443 subagent runs, 51.9K API requests, $5.1K at list prices), cache rebuilds priced in:
 
-- Cache-aware routing cuts cost 9.9% ($504); 12.7% in a month that included Fable sessions. About 8% on sessions started on Opus.
+- Cache-aware routing cuts cost 10.2% ($529 of $5,166) on the latest month; 12.7% in a month that included Fable sessions. About 8% on sessions started on Opus.
 - It declines about 500 downshifts whose rebuild would cost more than they save, and pays $82 in rebuilds instead of $752.
 - Cache reads are 62% of the bill, output tokens 10%. Main-thread turns arrive with a mean context of 387K tokens, where no paid switch can pay for itself. Effort is the lever there: 613 turns run below the user's `xhigh`, with no cache or thinking loss.
 - Subagents are 66% of spend; general-purpose agents alone 55%. Routing them by type at their first request is free. Whether they can run on Sonnet without taking more turns is the open question, worth about $1,355/month gross on this account; the router ships a trial mode to measure it live.
@@ -35,7 +35,8 @@ Details, including what the replay cannot see, are in [EVALUATION.md](EVALUATION
 - A local proxy (`ANTHROPIC_BASE_URL`) that applies it live, with shadow mode that forwards bytes untouched, fail-open retries, a dashboard, a per-session status line and a log of every request including abandoned ones.
 - A one-command launcher that runs Claude Code through the proxy as "Dynamic mode", so the header stops naming a model that isn't the one running.
 - A replay analyzer that runs any user's `~/.claude/projects` transcripts through the same engine and reports the cost with routing, rebuilds included. It reads the current transcript format (per-block lines, rewinds, compaction, resumed sessions, forks, fork context references).
-- 82 tests, including end-to-end proxy tests that verify the request prefix stays byte-identical across a tool loop after an effort change.
+- 84 tests, including end-to-end proxy tests that verify the request prefix stays byte-identical across a tool loop after an effort change.
+- Every sentence a person reads, from the status line to the decision log, is plain English with the money in it: "staying on Opus 5.5 for this task, using medium effort instead of xhigh (a switch to Sonnet 5.5 would cost $0.95 more than it saves)".
 
 ## Asks
 

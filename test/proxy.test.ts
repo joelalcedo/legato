@@ -298,7 +298,7 @@ describe('proxy end to end', () => {
     let status = readSessionStatus(dataDir, SESSION)!;
     assert.equal(status.through, false);
     assert.equal(status.lastStatus, 400);
-    assert.equal(status.reason, 'unrecognized model family');
+    assert.equal(status.reason, 'not a Claude model Legato knows, sent as is');
     // A background request must not overwrite what the line shows.
     await send({ model: 'claude-opus-5-5', tools: [], messages: [user('title please')] });
     status = readSessionStatus(dataDir, SESSION)!;

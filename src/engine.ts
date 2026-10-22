@@ -4,6 +4,7 @@ import type { Features, MessagesRequest } from './features.js';
 import { shareOf } from './hash.js';
 import { clampEffort, EFFORT_ORDER, effortRank, tierOf, tierRank, TIER_ORDER, type Effort, type Tier } from './models.js';
 import { priceFor, type Price } from './pricing.js';
+import { article, describeSignals, displayName, money, rebuildPhrase, taskKind, tierName, tokens, type Hold } from './words.js';
 
 /** What the router remembers about one conversation (main session or a single subagent). */
 export interface ConversationState {
@@ -47,11 +48,15 @@ export interface Decision {
   /** Effort to apply from this turn on, if it should change. */
   effort?: Effort;
   switched: boolean;
-  /** Why the decision was made, in order, for the log. */
+  /** Model the conversation was on before this decision (undefined on a conversation's first request). */
+  from?: string;
+  /** Why the decision was made, in order, as plain sentences for the log and the screen. */
   reasons: string[];
   classification?: Classification;
   economics?: Economics;
   freeSwitch?: boolean;
+  /** A switch the policy wanted but did not take, and why. */
+  held?: Hold;
   /** Which arm of cfg.trial this conversation landed in, when the trial applied. */
   arm?: 'A' | 'B';
 }
@@ -158,18 +163,20 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
   const reasons: string[] = [];
 
   if (!features.hasTools) {
-    return { route: false, model: incomingModel, switched: false, reasons: ['no tools: background request'] };
+    return { route: false, model: incomingModel, switched: false, reasons: ['a background request with no tools, sent as is'] };
   }
   if (!incomingTier) {
-    return { route: false, model: incomingModel, switched: false, reasons: ['unrecognized model family'] };
+    return { route: false, model: incomingModel, switched: false, reasons: ['not a Claude model Legato knows, sent as is'] };
   }
   if (cfg.ceiling === 'incoming' && incomingTier === 'haiku' && !features.override) {
-    return { route: false, model: incomingModel, switched: false, reasons: ['already on haiku'] };
+    return { route: false, model: incomingModel, switched: false, reasons: ['already on Haiku, the cheapest model'] };
   }
 
   const currentModel = state.model ?? incomingModel;
   const currentTier = tierOf(currentModel) ?? incomingTier;
   const ctx = contextTokens ?? estimateContext(state, features);
+  const from = state.model;
+  const current = displayName(currentModel);
 
   // Inside a tool loop the model is held: switching mid-loop would rebuild the cache
   // for a single step, and the per-message effort beta only takes effect on new user input.
@@ -179,10 +186,11 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
       model: currentModel,
       tier: currentTier,
       switched: false,
+      from,
       reasons: [
         features.machineTurn
-          ? `Claude Code's own prompt (suggestion, recap or compaction), not a user turn: hold ${currentModel}`
-          : `tool loop step ${features.toolLoopDepth}: hold ${currentModel}`,
+          ? `Claude Code's own housekeeping prompt, not a user turn: staying on ${current}`
+          : `step ${features.toolLoopDepth} of the current task: staying on ${current} until it finishes`,
       ],
     };
   }
@@ -201,7 +209,7 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
   if (features.override) {
     target = clampTier(features.override, allowed);
     effort = cfg.tierEffort[target];
-    reasons.push(`override //${features.override[0]} -> ${target}`);
+    reasons.push(`you asked for ${tierName(target)} with //${features.override[0]}`);
     strongUpgrade = true;
   } else if (trial) {
     // The arm is a function of the brief, so the analyzer replays each agent into the same arm.
@@ -210,33 +218,34 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
       target = tierOf(trial.model) ?? incomingTier;
       trialModel = trial.model;
       effort = trial.effort ?? cfg.tierEffort[target];
-      reasons.push(`trial arm B: ${features.agentType} agent -> ${trial.model}/${effort} (${Math.round(trial.share * 100)}% of them)`);
+      reasons.push(
+        `trial: this ${features.agentType} agent runs on ${displayName(trial.model)} at ${effort} effort, as ${Math.round(trial.share * 100)}% of them do`,
+      );
     } else {
       target = incomingTier;
-      reasons.push(`trial arm A: ${features.agentType} agent stays on ${incomingModel} (control)`);
+      reasons.push(`trial: this ${features.agentType} agent stays on ${displayName(incomingModel)} as part of the control group`);
       strongUpgrade = true;
     }
   } else if (agentTier) {
     target = agentTier;
     effort = cfg.tierEffort[agentTier];
-    reasons.push(`${features.agentType} agent -> ${agentTier} by agent type`);
+    reasons.push(`${article(`${features.agentType} agent`)}, which runs on ${tierName(agentTier)}`);
   } else {
     classification = given ?? classify(features.userText);
     target = classification.tier;
     effort = classification.effort;
-    reasons.push(
-      `classified ${target}/${effort}` + (classification.signals.length ? ` [${classification.signals.join(', ')}]` : ''),
-    );
+    const why = classification.signals.length ? ` (${describeSignals(classification.signals)})` : '';
+    reasons.push(`looks like ${taskKind(target)}${why}`);
     if (features.planMode && tierRank(target) < tierRank(cfg.planTier)) {
       target = cfg.planTier;
       effort = cfg.tierEffort[cfg.planTier];
-      reasons.push(`plan mode -> ${cfg.planTier}`);
+      reasons.push(`plan mode, so ${tierName(cfg.planTier)} does the planning`);
       strongUpgrade = true;
     }
     if (features.previousTaskErrors >= cfg.escalateAfterErrors) {
       const bumped = stepUp(maxTier(target, currentTier), allowed);
       if (bumped !== target) {
-        reasons.push(`escalate: the previous task ended on ${features.previousTaskErrors} failing tool results -> ${bumped}`);
+        reasons.push(`the previous task ended with ${features.previousTaskErrors} failing tool results, so stepping up to ${tierName(bumped)}`);
         target = bumped;
         strongUpgrade = true;
       }
@@ -245,16 +254,22 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
   }
 
   const clamped = clampTier(target, allowed);
-  if (clamped !== target) reasons.push(`clamped ${target} -> ${clamped} (floor ${cfg.floor}, ceiling ${cfg.ceiling})`);
+  if (clamped !== target) {
+    reasons.push(`${tierName(target)} is outside this preset's range (${cfg.floor} to ${cfg.ceiling}), so ${tierName(clamped)}`);
+  }
   target = clamped;
 
   let model = trialModel && tierOf(trialModel) === target ? trialModel : modelForTier(target, incomingModel, incomingTier, cfg);
   let switched = model !== currentModel;
   let economics: Economics | undefined;
   let freeSwitch: boolean | undefined;
+  let held: Hold | undefined;
+  const to = displayName(model);
 
   if (switched && features.isFork) {
-    reasons.push(`fork: holds ${currentModel}, whose ${Math.round(ctx / 1000)}K-token context and thinking it inherits from the parent`);
+    reasons.push(
+      `a fork of the parent conversation: it inherits ${tokens(ctx)} of ${current}'s context and thinking, so it stays there`,
+    );
     model = currentModel;
     target = currentTier;
     switched = false;
@@ -267,9 +282,10 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
   if (thinkingTokens > cfg.holdThinkingTokens) {
     economics = switchEconomics(currentModel, model, state, ctx, cfg, now);
     reasons.push(
-      `hold ${currentModel}: switching would drop ~${Math.round(thinkingTokens / 1000)}K tokens of its thinking, ` +
-        `which ${model} can't read - adjusting effort instead`,
+      `staying on ${current}: a switch to ${to} would throw away about ${tokens(thinkingTokens)} of its thinking, ` +
+        `which ${to} cannot read; lowering the effort instead`,
     );
+    held = { model, why: 'thinking', thinkingTokens, rebuildUsd: economics.rebuildUsd };
     model = currentModel;
     target = currentTier;
     switched = false;
@@ -281,51 +297,55 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
       freeSwitch = true;
       reasons.push(
         features.isFirstRequest
-          ? 'free switch: first request, no cache yet'
+          ? 'switching is free: this conversation has no cache yet'
           : !warm
-            ? `free switch: ${currentModel} cache expired`
-            : `free switch: small context (${ctx} tokens)`,
+            ? `switching is free: the ${current} cache has expired`
+            : `switching is free: the conversation is still small (${tokens(ctx)})`,
       );
     } else {
       economics = switchEconomics(currentModel, model, state, ctx, cfg, now);
       const upgrading = tierRank(target) > tierRank(currentTier);
       if (upgrading) {
         if (!strongUpgrade) {
-          reasons.push('upgrade not strongly signaled: hold');
+          reasons.push(
+            `staying on ${current}: the task is not clearly hard enough to pay ${money(economics.rebuildUsd)} to rebuild the cache on ${to}`,
+          );
+          held = { model, why: 'weak-upgrade', rebuildUsd: economics.rebuildUsd };
           model = currentModel;
           target = currentTier;
           switched = false;
         } else {
-          reasons.push(`upgrade for quality; cache rebuild $${economics.rebuildUsd.toFixed(3)}`);
+          reasons.push(`moving up to ${to} for quality; rebuilding its cache costs ${money(economics.rebuildUsd)}`);
         }
       } else if (economics.netUsd < cfg.minNetSavingsUsd) {
         reasons.push(
-          `hold ${currentModel}: downshift nets $${economics.netUsd.toFixed(3)} ` +
-            `(rebuild $${economics.rebuildUsd.toFixed(3)}, saves $${economics.perRequestSavingUsd.toFixed(4)}/request) - adjusting effort instead`,
+          `staying on ${current}: a switch to ${to} would cost ${money(economics.rebuildUsd)} to rebuild the cache ` +
+            `and save about ${money(economics.perRequestSavingUsd)} a request, so it would lose ${money(-economics.netUsd)}; lowering the effort instead`,
         );
+        held = { model, why: 'cost', rebuildUsd: economics.rebuildUsd, lossUsd: -economics.netUsd };
         model = currentModel;
         target = currentTier;
         switched = false;
       } else {
         reasons.push(
-          `downshift nets $${economics.netUsd.toFixed(3)} over ~${cfg.expectedRunRequests} requests ` +
-            `(rebuild $${economics.rebuildUsd.toFixed(3)})`,
+          `switching to ${to}: it saves about ${money(economics.perRequestSavingUsd)} a request and ${rebuildPhrase(economics.rebuildUsd)}, ` +
+            `about ${money(economics.netUsd)} ahead over the next ${cfg.expectedRunRequests} requests`,
         );
       }
     }
   } else if (switched) {
     freeSwitch = true;
-    reasons.push('free switch: no cache yet for this conversation');
+    reasons.push('switching is free: this conversation has no cache yet');
   }
 
   // The user's effort is a ceiling, like the model: hard turns run at it, others may go lower.
   const ceiling = features.incomingEffort as Effort | undefined;
   if (effort && ceiling && EFFORT_ORDER.includes(ceiling)) {
     if (strongUpgrade || classification?.tier === 'opus') {
-      if (effort !== ceiling) reasons.push(`effort ${effort} -> ${ceiling}: hard turn keeps the requested effort`);
+      if (effort !== ceiling) reasons.push(`a hard task keeps the ${ceiling} effort you set`);
       effort = ceiling;
     } else if (effortRank(effort) > effortRank(ceiling)) {
-      reasons.push(`effort ${effort} -> ${ceiling}: never above the requested effort`);
+      reasons.push(`effort stays at ${ceiling}, the level you set; Legato never goes above it`);
       effort = ceiling;
     }
   }
@@ -334,11 +354,11 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
     effort = undefined;
   } else if (effort) {
     const c = clampEffort(model, effort);
-    if (c !== effort) reasons.push(`effort ${effort} -> ${c ?? 'n/a'} for ${model}`);
+    if (c !== effort) reasons.push(`${displayName(model)} does not offer ${effort} effort, so ${c ?? 'its default'}`);
     effort = c;
   }
 
-  return { route: true, model, tier: target, effort, switched, reasons, classification, economics, freeSwitch, arm };
+  return { route: true, model, tier: target, effort, switched, from, reasons, classification, economics, freeSwitch, held, arm };
 }
 
 /** Fold a completed request's measured usage back into the conversation state. */
