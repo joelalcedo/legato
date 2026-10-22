@@ -4,26 +4,26 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 
 ## Commands
 
-- `npm install && npm run build` — compile to `dist/`
-- `npm test` — node:test suites via tsx (73 tests)
+- `npm install && npm run build`: compile to `dist/`
+- `npm test`: node:test suites via tsx (82 tests)
 - `npm run typecheck`
-- `npm run demo` — replay the synthetic sample transcripts and write `examples/sample-report.html`
-- `node dist/cli.js claude` — start the proxy if needed and launch Claude Code through it as "Dynamic mode" (the user runs this; the auto-mode classifier in this repo's sessions blocks starting servers)
-- `node dist/cli.js explain "<prompt>" --context 150000` — inspect one decision
-- `node dist/cli.js analyze --since 30d` — replay real `~/.claude/projects` transcripts (about 20s for 30 days)
+- `npm run demo`: replay the synthetic sample transcripts and write `examples/sample-report.html`
+- `node dist/cli.js claude`: start the proxy if needed and launch Claude Code through it as "Dynamic mode" (the user runs this; the auto-mode classifier in this repo's sessions blocks starting servers)
+- `node dist/cli.js explain "<prompt>" --context 150000`: inspect one decision
+- `node dist/cli.js analyze --since 30d`: replay real `~/.claude/projects` transcripts (about 20s for 30 days)
 
 ## Layout
 
-- `src/engine.ts` — the decision function and cache economics (`decide`, `switchEconomics`, `observe`). Start here.
-- `src/classifier.ts` — heuristic difficulty classifier, plus `classifyWithModel` (Haiku 5.5, optional).
-- `src/features.ts` — signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks, thinking volume.
-- `src/rewrite.ts` — applies a decision to a request; sets the turn's effort on Claude Code's per-turn control message when it is the request's tail, otherwise on an effort-only system message appended at the tail.
-- `src/sessions.ts` — conversation identity (session id from `metadata.user_id`, forks keyed apart) and on-disk state.
-- `src/proxy.ts` — HTTP proxy, SSE usage tap, fail-open, decision log, dashboard, per-session status files.
-- `src/stats.ts` — decision log entries, running totals, status files for `legato statusline`.
-- `src/analyzer/` — transcript reader (Claude Code 2.1.28x–2.1.30x formats), replay, text and HTML reports.
-- `src/pricing.ts`, `src/models.ts` — prices and model capabilities. Update when models change.
-- `docs/DESIGN.md` — derivation of the switching rule. `docs/EVALUATION.md` — results on real data. `docs/ROADMAP.md`. `docs/PITCH.md`.
+- `src/engine.ts`: the decision function and cache economics (`decide`, `switchEconomics`, `observe`). Start here.
+- `src/classifier.ts`: heuristic difficulty classifier, plus `classifyWithModel` (Haiku 5.5, optional).
+- `src/features.ts`: signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks, thinking volume.
+- `src/rewrite.ts`: applies a decision to a request; sets the turn's effort on Claude Code's per-turn control message when it is the request's tail, otherwise on an effort-only system message appended at the tail.
+- `src/sessions.ts`: conversation identity (session id from `metadata.user_id`, forks keyed apart) and on-disk state.
+- `src/proxy.ts`: HTTP proxy, SSE usage tap, fail-open, decision log, dashboard, per-session status files.
+- `src/stats.ts`: decision log entries, running totals, status files for `legato statusline`.
+- `src/analyzer/`: transcript reader (Claude Code 2.1.28x to 2.1.30x formats), replay, text and HTML reports.
+- `src/pricing.ts`, `src/models.ts`: prices and model capabilities. Update when models change.
+- `docs/DESIGN.md`: derivation of the switching rule. `docs/EVALUATION.md`: results on real data. `docs/ROADMAP.md`. `docs/PITCH.md`.
 
 ## Conventions
 

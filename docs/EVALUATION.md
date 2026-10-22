@@ -26,8 +26,8 @@ alone are 55% (310 agents, mean 106 requests each, mean prompt 276K tokens).
 
 Two consequences shape the policy:
 
-- At 387K tokens an Opus→Sonnet switch rebuilds the cache for $0.97 (5m TTL) or $1.55 (1h) to
-  save about 4¢ per request. Paid downshifts on a long main thread never pay for themselves.
+- At 387K tokens a switch from Opus to Sonnet rebuilds the cache for $0.97 (5m TTL) or $1.55 (1h)
+  to save about 4¢ per request. Paid downshifts on a long main thread never pay for themselves.
   What works there is effort, which is free, and switches at boundaries where no cache exists:
   the first request of a conversation, every subagent start, after compaction, after the cache
   has expired.
@@ -41,7 +41,7 @@ routing; rebuild cost is included.
 
 | Policy | Window | Saved | Switches (free) | Rebuilds |
 | - | - | - | - | - |
-| As first written, 5m TTL assumed | Sep 18 – Oct 18 | $160 (2.9%) | 412 (302) | $752 |
+| As first written, 5m TTL assumed | Sep 18 to Oct 18 | $160 (2.9%) | 412 (302) | $752 |
 | + a message carrying tool results is a loop step, never a turn | | $166 (3.0%) | 391 | $748 |
 | + strip Claude Code's wrappers and notifications from "user text" | | $397 (7.3%) | 318 | $558 |
 | + fix false positives ("0 failed", "profile", "security master") | | $428 (7.8%) | 313 | $541 |
@@ -49,8 +49,8 @@ routing; rebuild cost is included.
 | + escalate only when the previous task *ended* failing | | $572 (10.5%) | 289 | $476 |
 | + read the cache TTL per conversation (1h main thread, 5m subagents) | | $687 (12.6%) | 164 | $93 |
 | + the user's /effort is a ceiling; forks inherit the parent's context | | **$691 (12.7%)** | 163 | $89 |
-| Same policy, next window | Sep 21 – Oct 21 | $473 (9.3%) | 151 (117) | $82 |
-| + route Explore subagents to Sonnet by type; hold forks; hold downshifts that drop thinking | Sep 21 – Oct 21 | **$504 (9.9%)** | 173 (139) | $82 |
+| Same policy, next window | Sep 21 to Oct 21 | $473 (9.3%) | 151 (117) | $82 |
+| + route Explore subagents to Sonnet by type; hold forks; hold downshifts that drop thinking | Sep 21 to Oct 21 | **$504 (9.9%)** | 173 (139) | $82 |
 
 The gap between 12.7% and 9.9% is the data, not the policy: the earlier window had sessions
 started on Fable 5.1, which the router moves to Opus at the first request, and that one kind of
@@ -66,31 +66,32 @@ assumes, those are worth another $58; the headline leaves that out because it is
 Before the parser and classifier fixes, 13 of 18 sampled decisions were wrong. The causes, in
 order of cost:
 
-1. **Machine text treated as the user's prompt.** Task notifications, compaction summaries, a
-   skill's body loaded by a slash command, image captions inside tool results. One task
-   notification escalated a session to Fable for a $7.50 rebuild. Only 44% of what looked like
-   user turns were typed by the user.
-2. **A switch inside a tool loop.** Claude Code attaches text (an image caption, a queued
-   "Status?") to the message that carries tool results. Treating that as a new turn switched
-   models mid-loop, rebuilding the cache for one step.
-3. **The wrong cache TTL.** A subscription's main thread caches for 1h; subagents for 5m. With
-   300s assumed, "free switch: cache expired" was claimed on 277K-token contexts that were warm.
-4. **Escalating on recovered failures.** 202 of 221 escalations were for tasks whose failing
-   test had already gone green before the user's next message.
-5. **Classifier false positives.** "profile" as performance work (it was a user-profile screen),
+1. Machine text treated as the user's prompt: task notifications, compaction summaries, a skill's
+   body loaded by a slash command, image captions inside tool results. One task notification
+   escalated a session to Fable for a $7.50 rebuild. Only 44% of what looked like user turns were
+   typed by the user. Shadow mode later added two more: the next-prompt suggestion Claude Code
+   requests after every turn, and its idle recap.
+2. A switch inside a tool loop. Claude Code attaches text (an image caption, a queued "Status?")
+   to the message that carries tool results. Treating that as a new turn switched models
+   mid-loop, rebuilding the cache for one step.
+3. The wrong cache TTL. A subscription's main thread caches for 1h; subagents for 5m. With 300s
+   assumed, "free switch: cache expired" was claimed on 277K-token contexts that were warm.
+4. Escalating on recovered failures. 202 of 221 escalations were for tasks whose failing test had
+   already gone green before the user's next message.
+5. Classifier false positives: "profile" as performance work (it was a user-profile screen),
    "security master" as infosec (it is finance reference data), "0 failed" as a failure.
 
 ## What the replay cannot see
 
-- **Quality.** Output length is held constant across models, and a cheaper model may take more
-  turns to finish the same task. The `trial` config exists to measure this live: it routes a
-  share of one agent type to another model and logs the arm, so requests-to-finish and error
-  rates can be compared between arms.
-- **Output tokens.** Claude Code stops writing a response's transcript lines before the final
-  token count arrives, mostly in subagents. 69% of responses are affected; their output is
-  undercounted, so every cost here is a lower bound.
-- **Thinking.** Thinking blocks are readable only by the model that wrote them or a stronger one.
-  An Opus→Sonnet switch mid-session discards Opus's earlier reasoning silently. The router now
+- Quality. Output length is held constant across models, and a cheaper model may take more turns
+  to finish the same task. The `trial` config exists to measure this live: it routes a share of
+  one agent type to another model and logs the arm, so requests-to-finish and error rates can be
+  compared between arms.
+- Output tokens. Claude Code stops writing a response's transcript lines before the final token
+  count arrives, mostly in subagents. 69% of responses are affected; their output is undercounted,
+  so every cost here is a lower bound.
+- Thinking. Thinking blocks are readable only by the model that wrote them or a stronger one. A
+  switch from Opus to Sonnet mid-session discards Opus's earlier reasoning silently. The router
   holds such a switch when more than `holdThinkingTokens` of thinking would be dropped; on this
   data the rule never fired, because the economics already held every such switch.
 
@@ -101,9 +102,9 @@ Measured on this data, ranked by what it is worth:
 | Lever | Worth per month | Status |
 | - | - | - |
 | General-purpose subagents on Sonnet/high instead of Opus/xhigh | $1,355 gross; $400+ if 30% survives a quality check | Needs the live `trial`; the replay cannot judge quality |
-| Lower effort on subagents (they run at xhigh/max) through fewer tool-loop steps | ~$300 if a 10% reduction in requests holds | Unmeasured; needs live data |
-| Effort-first on the main thread | $75–150 | Shipped: effort is rewritten on every turn |
-| Context editing (`clear_tool_uses`) on long subagent runs | up to $300–500 before counting re-fetches | Experiment only; Anthropic's own trial found re-fetches made it a net loss |
+| Lower effort on subagents (they run at xhigh/max) through fewer tool-loop steps | about $300 if a 10% reduction in requests holds | Unmeasured; needs live data |
+| Effort-first on the main thread | $75 to $150 | Shipped: effort is rewritten on every turn |
+| Context editing (`clear_tool_uses`) on long subagent runs | up to $300 to $500 before counting re-fetches | Experiment only; Anthropic's own trial found re-fetches made it a net loss |
 | Explore subagents on Sonnet | $31 | Shipped |
-| Cache TTL changes | negative: the 1h main-thread TTL is worth ~$800/month as is | Nothing to do |
+| Cache TTL changes | negative: the 1h main-thread TTL is worth about $800/month as is | Nothing to do |
 | Deferring switches to boundaries | at most $171 | Not worth a mechanism |

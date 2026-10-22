@@ -1,6 +1,6 @@
 # Pitch: cache-aware routing for Claude Code
 
-**One line:** Claude Code should pick the model per turn, the way Copilot and Cursor now do, but only switch models when the prompt-cache math says it pays, and use per-turn effort as the free knob in between. Legato is a working implementation of that policy, evaluated on a real account's history.
+In one line: Claude Code should pick the model per turn, the way Copilot and Cursor now do, but only switch models when the prompt-cache math says it pays, and use per-turn effort as the free knob in between. Legato is a working implementation of that policy, evaluated on a real account's history.
 
 ## The problem
 
@@ -16,25 +16,26 @@ Each model has its own cache. Switching mid-conversation re-reads everything unc
 
 Replayed on 30 days of one developer's real Claude Code history (267 sessions, 443 subagent runs, 51.9K API requests, $5.1K at list prices), cache rebuilds priced in:
 
-- Cache-aware routing cuts cost **9.9%** ($504); **12.7%** in a month that included Fable sessions. About 8% on sessions started on Opus.
-- It declines ~500 downshifts whose rebuild would cost more than they save, and pays $82 in rebuilds instead of $752.
+- Cache-aware routing cuts cost 9.9% ($504); 12.7% in a month that included Fable sessions. About 8% on sessions started on Opus.
+- It declines about 500 downshifts whose rebuild would cost more than they save, and pays $82 in rebuilds instead of $752.
 - Cache reads are 62% of the bill, output tokens 10%. Main-thread turns arrive with a mean context of 387K tokens, where no paid switch can pay for itself. Effort is the lever there: 613 turns run below the user's `xhigh`, with no cache or thinking loss.
-- Subagents are 66% of spend; general-purpose agents alone 55%. Routing them by type at their first request is free. Whether they can run on Sonnet without taking more turns is the open question, worth ~$1,355/month gross on this account; the router ships a trial mode to measure it live.
+- Subagents are 66% of spend; general-purpose agents alone 55%. Routing them by type at their first request is free. Whether they can run on Sonnet without taking more turns is the open question, worth about $1,355/month gross on this account; the router ships a trial mode to measure it live.
 
 Details, including what the replay cannot see, are in [EVALUATION.md](EVALUATION.md).
 
 ## The policy
 
-1. **Effort every turn, free.** Claude Code already attaches the turn's effort to a per-turn control message. The router sets that value, on the control message when it is the request's tail and otherwise on an effort-only message appended at the tail, so nothing is inserted into history, the cache prefix stays byte-identical and preserved thinking stays valid.
-2. **Model at cache boundaries.** Switch freely when there's no cache to lose: new conversations, every subagent, after compaction, after TTL expiry, small contexts. Otherwise downshift only when `savings × expected run − rebuild − expected return cost` is positive. Upgrade for quality whenever the turn is clearly hard, the user is in plan mode, or the previous task ended failing.
-3. **Signals beyond the prompt.** Agent type from the system prompt; forks never switched; downshifts that would discard the current model's thinking held; the user's `/effort` as a ceiling.
+1. Effort on every turn, free. Claude Code already attaches the turn's effort to a per-turn control message. The router sets that value, on the control message when it is the request's tail and otherwise on an effort-only message appended at the tail, so nothing is inserted into history, the cache prefix stays byte-identical and preserved thinking stays valid.
+2. Model changes at cache boundaries. Switch freely when there's no cache to lose: new conversations, every subagent, after compaction, after TTL expiry, small contexts. Otherwise downshift only when `savings × expected run − rebuild − expected return cost` is positive. Upgrade for quality whenever the turn is clearly hard, the user is in plan mode, or the previous task ended failing.
+3. Signals beyond the prompt. Agent type from the system prompt; forks never switched; downshifts that would discard the current model's thinking held; the user's `/effort` as a ceiling.
 
 ## What's built
 
 - A decision engine with logged, numeric reasons for every choice.
 - A local proxy (`ANTHROPIC_BASE_URL`) that applies it live, with shadow mode that forwards bytes untouched, fail-open retries, a dashboard, a per-session status line and a log of every request including abandoned ones.
+- A one-command launcher that runs Claude Code through the proxy as "Dynamic mode", so the header stops naming a model that isn't the one running.
 - A replay analyzer that runs any user's `~/.claude/projects` transcripts through the same engine and reports the cost with routing, rebuilds included. It reads the current transcript format (per-block lines, rewinds, compaction, resumed sessions, forks, fork context references).
-- 73 tests, including end-to-end proxy tests that verify the request prefix stays byte-identical across a tool loop after an effort change.
+- 82 tests, including end-to-end proxy tests that verify the request prefix stays byte-identical across a tool loop after an effort change.
 
 ## Asks
 
@@ -47,4 +48,4 @@ Details, including what the replay cannot see, are in [EVALUATION.md](EVALUATION
 
 1. `legato analyze --since 30d --html report.html` on a real account; open the report.
 2. `legato explain "add a loading state" --context 180000` vs `--context 25000`: same prompt, opposite decisions, with the arithmetic shown.
-3. Live session through the proxy with the status line on: a rename drops the effort, a "why does this break" question keeps Opus at xhigh, an Explore subagent runs on Sonnet, and a typo on a huge context holds Opus with the rebuild cost in the reason.
+3. `legato`, then a live session with the status line on: a rename drops the effort, a "why does this break" question keeps Opus at xhigh, an Explore subagent runs on Sonnet, and a typo on a huge context holds Opus with the rebuild cost in the reason.

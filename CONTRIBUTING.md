@@ -10,18 +10,18 @@ npm run demo       # replay the synthetic samples, write examples/sample-report.
 
 ## Rules the code follows
 
-- **One `decide()`.** The proxy and the analyzer call the same decision function with the same
+- One `decide()`. The proxy and the analyzer call the same decision function with the same
   `extractFeatures()`. A policy change goes in `src/engine.ts`, `src/classifier.ts` or
   `src/features.ts`, never in the proxy or the replay.
-- **Reasons with numbers.** Every decision appends human-readable strings to `reasons`. Say
+- Reasons with numbers. Every decision appends human-readable strings to `reasons`. Say
   "rebuild $0.97 on 387K tokens", not "large context".
-- **Request bytes are deterministic.** Anything that changes a request must produce the same
+- Request bytes are deterministic. Anything that changes a request must produce the same
   bytes for the same history on every request, or it breaks the prompt cache and can invalidate
   preserved thinking. Add a prefix-stability test (see `test/proxy.test.ts`) for any such change.
-- **Savings err low.** When unsure how a token would have been billed, price it as a cache write.
+- Savings err low. When unsure how a token would have been billed, price it as a cache write.
   Assumptions that can't be measured (effort's effect on output length) are reported on their
   own line, never in the headline.
-- **Measure on real data before changing policy.** `legato analyze --since 30d` before and
+- Measure on real data before changing policy. `legato analyze --since 30d` before and
   after, same window, and put both numbers in the PR.
 
 ## Recording the demo
