@@ -1,4 +1,4 @@
-# Pitch: pick the model per task, pay for the cache only when it pays
+# Pitch: cache-aware model routing for Claude Code
 
 In one line: Claude Code should pick the model for each task, as Copilot and Cursor do, and change model only when the saving covers the cost of rebuilding the prompt cache, using effort as the free lever in between. Legato is a working implementation of that policy, evaluated on a real account's history.
 

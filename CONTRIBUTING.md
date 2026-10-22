@@ -42,9 +42,10 @@ Rscript scripts/charts.R /tmp/analyze.json docs/img
 
 `docs/demo.gif` and `docs/demo.mp4` are rendered from `scripts/video`, a [HyperFrames](https://github.com/heygen-com/hyperframes)
 composition: HTML and GSAP, rendered frame by frame in headless Chrome, so every render is the same.
-The session scene replays a real Legato session from the decision log (the models, the effort,
-the rebuild cost and the savings are the logged numbers; the assistant's replies are abridged), and
-the chart scene draws the cumulative series from `legato analyze --json`.
+The session scene replays a real session from the decision log: the prompts, token counts and
+timings are the logged ones, and the routing and the savings are that session run through today's
+router at list prices, with the cold-cache rebuild of the Opus turn charged. The assistant's replies
+are abridged. The chart scene draws the cumulative series from `legato analyze --json`.
 
 ```bash
 cd scripts/video

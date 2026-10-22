@@ -16,8 +16,9 @@ import { BUILD, startProxy } from './proxy.js';
 import { displayName, formatStatus, readSessionStatus, readStats } from './stats.js';
 import { capitalize, headline } from './words.js';
 
-const HELP = `legato: runs Claude Code and picks the model and effort for each task, changing model only
-        when that saves money after paying to rebuild the prompt cache
+const HELP = `legato: cache-aware model routing for Claude Code. Runs Claude Code and routes each task to
+        Haiku, Sonnet or Opus at the effort it needs, switching model only when that saves money
+        after paying to rebuild the prompt cache
 
 Usage
   legato [any claude arguments]

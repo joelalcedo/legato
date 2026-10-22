@@ -78,8 +78,9 @@ the median is given because a few long runs pull the means up):
 | Design, plan or large change | 82 | $1.95 | $2.00 | $1.28 | $1.18 | -$0.04 | -$4 |
 | Find why something fails | 370 | $0.85 | $0.97 | $0.36 | $0.35 | -$0.12 | -$43 |
 
-The two hard kinds cost more with Legato because a hard task that arrives while the conversation
-is on Sonnet pays the rebuild to bring Opus back. The earlier switch to Sonnet already priced that
+The month's cumulative usage with and without Legato is `docs/img/bill-over-the-month.png`, the
+film's last scene as a still. The two hard kinds cost more with Legato because a hard task that
+arrives while the conversation is on Sonnet pays the rebuild to bring Opus back. The earlier switch to Sonnet already priced that
 return in (`returnProbability`), so the pair is still ahead; the per-task view just lands the bill
 on the hard task.
 

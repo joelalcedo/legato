@@ -1,7 +1,7 @@
 {
   "name": "legato",
   "version": "0.1.0",
-  "description": "Cache-aware model routing for Claude Code: picks model and effort per turn, and only switches models when the prompt-cache math says it pays.",
+  "description": "Cache-aware model routing for Claude Code: routes each task to Haiku, Sonnet or Opus, switching model only when the saving covers the cache rebuild",
   "type": "module",
   "bin": {
     "legato": "dist/cli.js"

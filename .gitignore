@@ -3,3 +3,6 @@ dist/
 *.log
 .DS_Store
 report.html
+scripts/video/.hyperframes/
+scripts/video/renders/
+scripts/video/node_modules/
