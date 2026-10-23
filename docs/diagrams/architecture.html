@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code with and without Legato</title>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Tokens follow the diagram-design skin (Geist, orthogonal connectors, one accent) with the paper
+       set to GitHub's page colours, so the exported PNG sits on the README without a visible block. */
+    :root {
+      --paper: #ffffff;
+      --paper-2: #f6f8fa;
+      --ink: #2d3142;
+      --muted: #4f5d75;
+      --soft: #5a6580;
+      --rule: rgba(45,49,66,0.10);
+      --zone: rgba(45,49,66,0.02);
+      --accent: #bf4520;
+      --accent-tint: rgba(191,69,32,0.08);
+      --input-fill: rgba(79,93,117,0.10);
+      --input-stroke: #5a6580;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    :root[data-theme="dark"] {
+      --paper: #0d1117;
+      --paper-2: #161b22;
+      --ink: #e6edf3;
+      --muted: #9198a1;
+      --soft: #8b949e;
+      --rule: rgba(230,237,243,0.12);
+      --zone: rgba(230,237,243,0.03);
+      --accent: #f08a59;
+      --accent-tint: rgba(240,138,89,0.10);
+      --input-fill: rgba(145,152,161,0.12);
+      --input-stroke: #8b949e;
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink); padding: 2rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 960px; display: block; }
+
+    .paper { fill: var(--paper); }
+    .zone { fill: var(--zone); stroke: var(--rule); stroke-width: 0.8; }
+    .eyebrow { fill: var(--soft); font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.14em; }
+    .arrow { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+    .arrowhead { fill: var(--muted); }
+    .node { fill: var(--paper-2); stroke: var(--ink); stroke-width: 1; }
+    .node-input { fill: var(--input-fill); stroke: var(--input-stroke); stroke-width: 1; }
+    .node-focal { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1; }
+    .name { fill: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 600; text-anchor: middle; }
+    .sub { fill: var(--muted); font-family: var(--font-mono); font-size: 9px; text-anchor: middle; }
+  </style>
+</head>
+<body>
+  <div class="diagram-container">
+    <svg viewBox="0 0 960 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="architecture-title architecture-desc">
+      <title id="architecture-title">Claude Code with and without Legato</title>
+      <desc id="architecture-desc">Without Legato every task goes to one model; with Legato a local proxy sends each task to Haiku, Sonnet or Opus.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="arrowhead" points="0 0, 8 3, 0 6"/></marker>
+      </defs>
+
+      <rect class="paper" width="100%" height="100%"/>
+
+      <!-- Zone: without Legato -->
+      <rect class="zone" x="40" y="24" width="880" height="128" rx="8"/>
+      <rect class="paper" x="56" y="28" width="96" height="12" rx="2"/>
+      <text class="eyebrow" x="104" y="37" text-anchor="middle">WITHOUT LEGATO</text>
+
+      <!-- Zone: with Legato -->
+      <rect class="zone" x="40" y="176" width="880" height="240" rx="8"/>
+      <rect class="paper" x="56" y="180" width="80" height="12" rx="2"/>
+      <text class="eyebrow" x="96" y="189" text-anchor="middle">WITH LEGATO</text>
+
+      <!-- Arrows (behind nodes) -->
+      <line class="arrow" x1="232" y1="96" x2="728" y2="96" marker-end="url(#arrow)"/>
+
+      <line class="arrow" x1="232" y1="304" x2="400" y2="304" marker-end="url(#arrow)"/>
+      <path class="arrow" d="M 560,290 H 636 Q 644,290 644,282 V 244 Q 644,236 652,236 H 728" marker-end="url(#arrow)"/>
+      <line class="arrow" x1="560" y1="304" x2="728" y2="304" marker-end="url(#arrow)"/>
+      <path class="arrow" d="M 560,318 H 636 Q 644,318 644,326 V 364 Q 644,372 652,372 H 728" marker-end="url(#arrow)"/>
+
+      <!-- Row 1 nodes -->
+      <rect class="paper" x="72" y="68" width="160" height="56" rx="6"/>
+      <rect class="node-input" x="72" y="68" width="160" height="56" rx="6"/>
+      <text class="name" x="152" y="100">Claude Code</text>
+
+      <rect class="paper" x="728" y="68" width="160" height="56" rx="6"/>
+      <rect class="node" x="728" y="68" width="160" height="56" rx="6"/>
+      <text class="name" x="808" y="92">Opus 5.5</text>
+      <text class="sub" x="808" y="108">every task, your effort</text>
+
+      <!-- Row 2 nodes -->
+      <rect class="paper" x="72" y="276" width="160" height="56" rx="6"/>
+      <rect class="node-input" x="72" y="276" width="160" height="56" rx="6"/>
+      <text class="name" x="152" y="308">Claude Code</text>
+
+      <rect class="paper" x="400" y="276" width="160" height="56" rx="6"/>
+      <rect class="node-focal" x="400" y="276" width="160" height="56" rx="6"/>
+      <text class="name" x="480" y="300">Legato</text>
+      <text class="sub" x="480" y="316">local proxy</text>
+
+      <rect class="paper" x="728" y="212" width="160" height="48" rx="6"/>
+      <rect class="node" x="728" y="212" width="160" height="48" rx="6"/>
+      <text class="name" x="808" y="233">Haiku 5.5</text>
+      <text class="sub" x="808" y="248">quick tasks</text>
+
+      <rect class="paper" x="728" y="280" width="160" height="48" rx="6"/>
+      <rect class="node" x="728" y="280" width="160" height="48" rx="6"/>
+      <text class="name" x="808" y="301">Sonnet 5.5</text>
+      <text class="sub" x="808" y="316">ordinary tasks</text>
+
+      <rect class="paper" x="728" y="348" width="160" height="48" rx="6"/>
+      <rect class="node" x="728" y="348" width="160" height="48" rx="6"/>
+      <text class="name" x="808" y="369">Opus 5.5</text>
+      <text class="sub" x="808" y="384">hard tasks</text>
+    </svg>
+  </div>
+</body>
+</html>

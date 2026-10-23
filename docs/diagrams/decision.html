@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>One Legato decision</title>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #ffffff;
+      --paper-2: #f6f8fa;
+      --ink: #2d3142;
+      --muted: #4f5d75;
+      --soft: #5a6580;
+      --oval-fill: rgba(45,49,66,0.03);
+      --oval-stroke: rgba(45,49,66,0.30);
+      --accent: #bf4520;
+      --accent-tint: rgba(191,69,32,0.08);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    :root[data-theme="dark"] {
+      --paper: #0d1117;
+      --paper-2: #161b22;
+      --ink: #e6edf3;
+      --muted: #9198a1;
+      --soft: #8b949e;
+      --oval-fill: rgba(230,237,243,0.04);
+      --oval-stroke: rgba(230,237,243,0.35);
+      --accent: #f08a59;
+      --accent-tint: rgba(240,138,89,0.10);
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink); padding: 2rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 960px; display: block; }
+
+    .paper { fill: var(--paper); }
+    .arrow { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+    .arrow-accent { fill: none; stroke: var(--accent); stroke-width: 1.4; }
+    .arrowhead { fill: var(--muted); }
+    .arrowhead-accent { fill: var(--accent); }
+    .oval { fill: var(--oval-fill); stroke: var(--oval-stroke); stroke-width: 1; }
+    .step { fill: var(--paper-2); stroke: var(--ink); stroke-width: 1; }
+    .step-focal { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1; }
+    .name { fill: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 600; text-anchor: middle; }
+    .sub { fill: var(--muted); font-family: var(--font-mono); font-size: 9px; text-anchor: middle; }
+    .label { fill: var(--muted); font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.12em; text-anchor: middle; }
+    .label-accent { fill: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="diagram-container">
+    <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="decision-title decision-desc">
+      <title id="decision-title">One Legato decision</title>
+      <desc id="decision-desc">Flowchart of how Legato handles one request: a keyword rule picks the task's model, and the model switches only when the switch pays for its cache rebuild.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="arrowhead" points="0 0, 8 3, 0 6"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="arrowhead-accent" points="0 0, 8 3, 0 6"/></marker>
+      </defs>
+
+      <rect class="paper" width="100%" height="100%"/>
+
+      <!-- Arrows first -->
+      <line class="arrow" x1="264" y1="76" x2="264" y2="108" marker-end="url(#arrow)"/>
+      <line class="arrow" x1="376" y1="160" x2="524" y2="160" marker-end="url(#arrow)"/>
+      <line class="arrow" x1="264" y1="212" x2="264" y2="244" marker-end="url(#arrow)"/>
+      <line class="arrow" x1="264" y1="300" x2="264" y2="332" marker-end="url(#arrow)"/>
+      <path class="arrow" d="M 392,388 H 616 Q 624,388 624,380 V 188" marker-end="url(#arrow)"/>
+      <line class="arrow-accent" x1="264" y1="444" x2="264" y2="476" marker-end="url(#arrow-accent)"/>
+      <line class="arrow" x1="364" y1="504" x2="776" y2="504" marker-end="url(#arrow)"/>
+      <path class="arrow" d="M 724,160 H 840 Q 848,160 848,168 V 482" marker-end="url(#arrow)"/>
+
+      <!-- Arrow labels, each on a mask with a gap from its line -->
+      <rect class="paper" x="438" y="140" width="24" height="12" rx="2"/>
+      <text class="label" x="450" y="149">NO</text>
+
+      <rect class="paper" x="272" y="222" width="32" height="12" rx="2"/>
+      <text class="label" x="288" y="231">YES</text>
+
+      <rect class="paper" x="492" y="368" width="24" height="12" rx="2"/>
+      <text class="label" x="504" y="377">NO</text>
+
+      <rect class="paper" x="272" y="454" width="32" height="12" rx="2"/>
+      <text class="label label-accent" x="288" y="463">YES</text>
+
+      <!-- Start -->
+      <rect class="oval" x="164" y="32" width="200" height="44" rx="22"/>
+      <text class="name" x="264" y="58">Request from Claude Code</text>
+
+      <!-- Decision 1 -->
+      <polygon class="step" points="264,108 376,160 264,212 152,160"/>
+      <text class="name" x="264" y="157">Does a keyword</text>
+      <text class="name" x="264" y="171">rule fire?</text>
+
+      <!-- Keep -->
+      <rect class="paper" x="524" y="132" width="200" height="56" rx="6"/>
+      <rect class="step" x="524" y="132" width="200" height="56" rx="6"/>
+      <text class="name" x="624" y="156">Keep the model</text>
+      <text class="sub" x="624" y="173">the cache stays warm</text>
+
+      <!-- Pick -->
+      <rect class="paper" x="164" y="244" width="200" height="56" rx="6"/>
+      <rect class="step" x="164" y="244" width="200" height="56" rx="6"/>
+      <text class="name" x="264" y="268">Pick the task's model</text>
+      <text class="sub" x="264" y="285">Haiku, Sonnet or Opus</text>
+
+      <!-- Decision 2 -->
+      <polygon class="step" points="264,332 392,388 264,444 136,388"/>
+      <text class="name" x="264" y="385">Does the switch pay for</text>
+      <text class="name" x="264" y="399">its cache rebuild?</text>
+
+      <!-- Switch (focal) -->
+      <rect class="paper" x="164" y="476" width="200" height="56" rx="6"/>
+      <rect class="step-focal" x="164" y="476" width="200" height="56" rx="6"/>
+      <text class="name" x="264" y="500">Switch model</text>
+      <text class="sub" x="264" y="517">free where no cache exists yet</text>
+
+      <!-- End -->
+      <rect class="oval" x="776" y="482" width="144" height="44" rx="22"/>
+      <text class="name" x="848" y="508">Send to the API</text>
+    </svg>
+  </div>
+</body>
+</html>

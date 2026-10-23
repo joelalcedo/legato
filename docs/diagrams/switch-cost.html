@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What a switch costs</title>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #ffffff;
+      --ink: #2d3142;
+      --muted: #4f5d75;
+      --soft: #5a6580;
+      --grid: rgba(45,49,66,0.08);
+      --axis: rgba(45,49,66,0.25);
+      --rule: rgba(45,49,66,0.10);
+      --stay: rgba(45,49,66,0.70);
+      --accent: #bf4520;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    :root[data-theme="dark"] {
+      --paper: #0d1117;
+      --ink: #e6edf3;
+      --muted: #9198a1;
+      --soft: #8b949e;
+      --grid: rgba(230,237,243,0.10);
+      --axis: rgba(230,237,243,0.30);
+      --rule: rgba(230,237,243,0.12);
+      --stay: rgba(230,237,243,0.70);
+      --accent: #f08a59;
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink); padding: 2rem; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    svg { width: 100%; min-width: 960px; display: block; }
+
+    .paper { fill: var(--paper); }
+    .eyebrow { fill: var(--soft); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em; }
+    .caption { fill: var(--soft); font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.14em; text-anchor: middle; }
+    .grid { stroke: var(--grid); stroke-width: 0.8; }
+    .axis { stroke: var(--axis); stroke-width: 1; }
+    .tick { fill: var(--muted); font-family: var(--font-mono); font-size: 8px; }
+    .stay { fill: none; stroke: var(--stay); stroke-width: 1.2; stroke-linejoin: round; }
+    .switch { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; }
+    .dot { fill: var(--accent); }
+    .rule { stroke: var(--rule); stroke-width: 0.8; }
+    .legend { fill: var(--muted); font-family: var(--font-sans); font-size: 8.5px; }
+  </style>
+</head>
+<body>
+  <div class="diagram-container">
+    <svg viewBox="0 0 960 464" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="switch-cost-title switch-cost-desc">
+      <title id="switch-cost-title">What a switch costs</title>
+      <desc id="switch-cost-desc">Cumulative cost over eight requests of staying on Opus against switching to Sonnet, in a 40K-token conversation where the switch pays back by the fifth request and a 180K-token one where it does not.</desc>
+
+      <rect class="paper" width="100%" height="100%"/>
+
+      <text class="caption" transform="rotate(-90 24 208)" x="24" y="208">CUMULATIVE COST, USD</text>
+
+      <!-- Left panel: 40K tokens -->
+      <text class="eyebrow" x="80" y="36">40K TOKENS OF CONTEXT</text>
+      <line class="grid" x1="80" y1="284" x2="444" y2="284"/>
+      <line class="grid" x1="80" y1="208" x2="444" y2="208"/>
+      <line class="grid" x1="80" y1="132" x2="444" y2="132"/>
+      <line class="grid" x1="80" y1="56" x2="444" y2="56"/>
+      <line class="axis" x1="80" y1="56" x2="80" y2="360"/>
+      <line class="axis" x1="80" y1="360" x2="444" y2="360"/>
+      <text class="tick" x="72" y="288" text-anchor="end">0.20</text>
+      <text class="tick" x="72" y="212" text-anchor="end">0.40</text>
+      <text class="tick" x="72" y="136" text-anchor="end">0.60</text>
+      <text class="tick" x="72" y="60" text-anchor="end">0.80</text>
+
+      <polyline class="stay" points="80,344.2 132,328.4 184,312.6 236,296.8 288,281.0 340,265.2 392,249.3 444,233.5"/>
+      <polyline class="switch" points="80,317.4 132,309.5 184,301.6 236,293.7 288,285.8 340,277.9 392,270.0 444,262.1"/>
+      <circle class="dot" cx="80" cy="317.4" r="3.5"/>
+      <circle class="dot" cx="132" cy="309.5" r="3.5"/>
+      <circle class="dot" cx="184" cy="301.6" r="3.5"/>
+      <circle class="dot" cx="236" cy="293.7" r="3.5"/>
+      <circle class="dot" cx="288" cy="285.8" r="3.5"/>
+      <circle class="dot" cx="340" cy="277.9" r="3.5"/>
+      <circle class="dot" cx="392" cy="270.0" r="3.5"/>
+      <circle class="dot" cx="444" cy="262.1" r="3.5"/>
+
+      <text class="tick" x="80" y="380" text-anchor="middle">1</text>
+      <text class="tick" x="132" y="380" text-anchor="middle">2</text>
+      <text class="tick" x="184" y="380" text-anchor="middle">3</text>
+      <text class="tick" x="236" y="380" text-anchor="middle">4</text>
+      <text class="tick" x="288" y="380" text-anchor="middle">5</text>
+      <text class="tick" x="340" y="380" text-anchor="middle">6</text>
+      <text class="tick" x="392" y="380" text-anchor="middle">7</text>
+      <text class="tick" x="444" y="380" text-anchor="middle">8</text>
+      <text class="caption" x="262" y="400">REQUESTS AFTER THE DECISION</text>
+
+      <!-- Right panel: 180K tokens -->
+      <text class="eyebrow" x="560" y="36">180K TOKENS OF CONTEXT</text>
+      <line class="grid" x1="560" y1="284" x2="924" y2="284"/>
+      <line class="grid" x1="560" y1="208" x2="924" y2="208"/>
+      <line class="grid" x1="560" y1="132" x2="924" y2="132"/>
+      <line class="grid" x1="560" y1="56" x2="924" y2="56"/>
+      <line class="axis" x1="560" y1="56" x2="560" y2="360"/>
+      <line class="axis" x1="560" y1="360" x2="924" y2="360"/>
+      <text class="tick" x="552" y="288" text-anchor="end">0.20</text>
+      <text class="tick" x="552" y="212" text-anchor="end">0.40</text>
+      <text class="tick" x="552" y="136" text-anchor="end">0.60</text>
+      <text class="tick" x="552" y="60" text-anchor="end">0.80</text>
+
+      <polyline class="stay" points="560,333.6 612,307.1 664,280.7 716,254.2 768,227.8 820,201.3 872,174.9 924,148.4"/>
+      <polyline class="switch" points="560,184.4 612,171.2 664,158.0 716,144.8 768,131.5 820,118.3 872,105.1 924,91.9"/>
+      <circle class="dot" cx="560" cy="184.4" r="3.5"/>
+      <circle class="dot" cx="612" cy="171.2" r="3.5"/>
+      <circle class="dot" cx="664" cy="158.0" r="3.5"/>
+      <circle class="dot" cx="716" cy="144.8" r="3.5"/>
+      <circle class="dot" cx="768" cy="131.5" r="3.5"/>
+      <circle class="dot" cx="820" cy="118.3" r="3.5"/>
+      <circle class="dot" cx="872" cy="105.1" r="3.5"/>
+      <circle class="dot" cx="924" cy="91.9" r="3.5"/>
+
+      <text class="tick" x="560" y="380" text-anchor="middle">1</text>
+      <text class="tick" x="612" y="380" text-anchor="middle">2</text>
+      <text class="tick" x="664" y="380" text-anchor="middle">3</text>
+      <text class="tick" x="716" y="380" text-anchor="middle">4</text>
+      <text class="tick" x="768" y="380" text-anchor="middle">5</text>
+      <text class="tick" x="820" y="380" text-anchor="middle">6</text>
+      <text class="tick" x="872" y="380" text-anchor="middle">7</text>
+      <text class="tick" x="924" y="380" text-anchor="middle">8</text>
+      <text class="caption" x="742" y="400">REQUESTS AFTER THE DECISION</text>
+
+      <!-- Legend strip -->
+      <line class="rule" x1="40" y1="420" x2="920" y2="420"/>
+      <line class="switch" x1="40" y1="444" x2="64" y2="444"/>
+      <circle class="dot" cx="52" cy="444" r="3.5"/>
+      <text class="legend" x="72" y="448">Switch to Sonnet 5.5</text>
+      <line class="stay" x1="220" y1="444" x2="244" y2="444"/>
+      <text class="legend" x="252" y="448">Stay on Opus 5.5</text>
+    </svg>
+  </div>
+</body>
+</html>

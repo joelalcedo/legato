@@ -58,6 +58,26 @@ Needs Node 22+ and ffmpeg. To change the session, edit the lines and the timings
 `compositions/session.html`. The numbers quoted in the README come from the same `analyze` run;
 its text report prints the by-kind table.
 
+## The diagrams
+
+The three diagrams in the README's "How it works" are hand-drawn SVG in `docs/diagrams/*.html`,
+following [diagram-design](https://github.com/cathrynlavery/diagram-design): Geist type,
+orthogonal connectors with rounded elbows, one accent per diagram, no shadows, nothing in the
+picture that the sentence before it does not need. Each file carries light and dark tokens, and
+`scripts/diagrams/render.mjs` screenshots the SVG twice, at 2x, into `docs/diagrams/<name>-light.png`
+and `<name>-dark.png`; the README picks one with a `<picture>` element. The cost chart's points are
+the engine's own numbers: `switchEconomics` for Opus to Sonnet at 40K and 180K tokens of context,
+with the default 2K tokens of growth and 1.2K of output per request, at 5-minute cache prices.
+
+```bash
+cd scripts/diagrams && npm install && npx playwright-core install chromium   # once
+node render.mjs                                   # every diagram, or: node render.mjs decision
+```
+
+`LEGATO_CHROME=/path/to/chrome` uses a browser that is already installed instead. From a checkout
+of diagram-design, `python3 scripts/verify-geometry.py docs/diagrams/<name>.html` checks the
+connector rules and `python3 skills/diagram-design/scripts/self_check.py` the accessible-SVG contract.
+
 ## Reporting a transcript the reader gets wrong
 
 Run `legato analyze --since 7d --json` and look for a conversation whose request count

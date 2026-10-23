@@ -12,6 +12,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `node dist/cli.js explain "<prompt>" --context 150000`: inspect one decision
 - `node dist/cli.js analyze --since 30d`: replay real `~/.claude/projects` transcripts (about 35s for 30 days); `--json` adds per-task records and the cost series
 - `node scripts/video/make-data.mjs analyze.json`, then in `scripts/video`: `npx hyperframes render ...` for the README film and `--composition savings.html` for the savings chart (CONTRIBUTING.md has the full sequence). The session scene replays a real session from the decision log.
+- `node scripts/diagrams/render.mjs`: the README's three "How it works" diagrams, from `docs/diagrams/*.html` (hand-drawn SVG in the diagram-design style) to light and dark PNGs. The cost chart's points come from `switchEconomics`; re-render it if prices or the defaults change.
 
 ## Layout
 
