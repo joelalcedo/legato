@@ -283,7 +283,7 @@
       const breakdown = document.getElementById("c-break");
       const positive = KINDS.filter((k) => k.total > 0).sort((a, b) => b.total - a.total);
       const negative = KINDS.filter((k) => k.total <= 0);
-      const bars = positive.map((k) => [k.kind, k.tasks, k.total]);
+      const bars = positive.slice(0, 6).map((k) => [k.label || k.kind, k.tasks, k.total]);
       if (negative.length) bars.push(["Hard tasks, bringing Opus back", negative.reduce((a, k) => a + k.tasks, 0), negative.reduce((a, k) => a + k.total, 0)]);
       const biggest = Math.max(...bars.map((b) => Math.abs(b[2])));
       bars.forEach(([label, n, v], i) => {

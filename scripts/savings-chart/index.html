@@ -67,7 +67,7 @@
       }
       .row {
         position: relative;
-        height: 98px;
+        height: var(--row-h, 98px);
         opacity: 0;
       }
       .row .kind {
@@ -199,6 +199,12 @@
         const dollars = (v) => '$' + Math.round(v).toLocaleString('en-US');
 
         const kinds = KINDS.slice().sort((a, b) => b.total - a.total);
+        const ROW_H = Math.min(98, Math.floor(600 / kinds.length));
+        document.getElementById('sv-rows').style.setProperty('--row-h', ROW_H + 'px');
+        const below = 240 + kinds.length * ROW_H + 16;
+        document.getElementById('sv-axis').style.top = below + 'px';
+        document.getElementById('sv-legend').style.top = below + 'px';
+        document.getElementById('sv-total').style.top = below + 76 + 'px';
         const maxX = Math.max(...kinds.map((k) => Math.max(k.without, k.with))) * 1.05;
         const W = 1180;
         const X = (v) => (v / maxX) * W;
@@ -215,7 +221,7 @@
           const saves = k.total >= 0;
           const per = k.without - k.with;
           row.innerHTML =
-            '<div class="kind">' + k.kind + '<small>' + k.tasks.toLocaleString('en-US') + ' tasks</small></div>' +
+            '<div class="kind">' + (k.label || k.kind) + '<small>' + k.tasks.toLocaleString('en-US') + ' tasks</small></div>' +
             '<div class="track" id="track-' + i + '" style="left:' + (500 + Math.min(X(k.with), X(k.without))) + 'px;width:' + Math.abs(X(k.without) - X(k.with)) + 'px"></div>' +
             '<div class="dot alone" id="alone-' + i + '" style="left:' + (500 + X(k.without)) + 'px"></div>' +
             '<div class="dot legato" id="legato-' + i + '" style="left:' + (500 + X(k.without)) + 'px"></div>' +

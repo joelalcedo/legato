@@ -21,7 +21,7 @@ Needs Node 20 or newer and Claude Code. `legato` starts the proxy, adds the stat
 
 ```bash
 legato analyze --since 30d --html report.html    # what Legato would have saved on your own history
-legato explain "add a loading state" --context 180000 --effort xhigh   # one decision, with the arithmetic
+legato explain "optimize the table rendering" --context 180000 --effort xhigh   # one decision, with the arithmetic
 legato start --mode shadow                       # decide and log, but send every request as is
 ```
 
@@ -31,7 +31,7 @@ Nothing leaves your machine except the API calls Claude Code already makes.
 
 Legato is a local proxy between Claude Code and the API. For every request it reads the conversation, chooses a model and an effort, rewrites the request when that saves money, and streams the answer back.
 
-What kind of task it is comes from a short list of keyword rules you can read in `src/classifier.ts`: "root cause" and "race condition" point to a hard task, "rename", "commit" and a greeting point to a quick one, and every rule that fires is printed with the decision. When no rule fires the task counts as ordinary, which means Sonnet at medium effort if a switch pays and the current model at a lower effort if it does not; in the month below that was 42% of tasks, and nine in ten of them stayed on the model they were on. A task that ends in failures is escalated, plan mode goes to Opus, and a leading `//o` forces Opus for one task. No model and no network call sits in that path; `--classifier haiku` asks Haiku 5.5 instead, with an API key.
+What kind of task it is comes from a short list of keyword rules you can read in `src/classifier.ts`: "root cause" and "race condition" point to a hard task, "rename", "commit" and a greeting point to a quick one, and every rule that fires is printed with the decision. When no rule fires, Legato does not guess: the task stays on the model the conversation is on, one effort step below your setting. In the month below that was 42% of tasks. A hard verdict goes to Opus for free at a cache boundary; paying to rebuild a warm cache takes two hard rules, a task that just failed, or plan mode. A leading `//o` forces Opus for one task. No model and no network call sits in that path; `--classifier haiku` asks Haiku 5.5 instead, with an API key.
 
 Effort is Claude Code's setting for how long a model thinks before it answers. Legato lowers it on easy tasks and keeps your setting on hard ones. That costs nothing, because nothing in the conversation changes and the cache stays warm.
 
@@ -41,7 +41,7 @@ A switch of model is different. Each model keeps its own cached copy of the conv
 Legato: staying on Opus 5.5 for this task, using medium effort instead of xhigh (a switch to Sonnet 5.5 would cost $0.39 more than it saves) · saved $1.15 this session
 ```
 
-Subagents are routed at the proxy by what they are, so Explore agents run on Sonnet whatever Claude Code's own subagent model setting does ([#43869](https://github.com/anthropics/claude-code/issues/43869)). A fork, which inherits its parent's whole conversation, stays on the parent's model.
+Subagents are routed at the proxy by what they are, whatever Claude Code's own subagent model setting does ([#43869](https://github.com/anthropics/claude-code/issues/43869)): Explore agents run on Sonnet, and general-purpose agents stay on the parent's model until a live trial shows Sonnet holds up. A fork, which inherits its parent's whole conversation, stays on the parent's model.
 
 "Saved" is what the same requests would have cost, at API list prices, on the model Claude Code asked for. If the API rejects a rewritten request, Legato sends it once more exactly as Claude Code wrote it. Every decision is logged with its reasons in `~/.legato/decisions.jsonl`.
 
@@ -49,7 +49,7 @@ Subagents are routed at the proxy by what they are, so Explore agents run on Son
 
 ![What a task costs with and without Legato, by kind of task: general-purpose agent runs and ordinary coding tasks carry the saving, hard tasks cost a few cents more](docs/savings.gif)
 
-One month of one developer's real Claude Code use, replayed through Legato: $542 saved of $5,212, after paying for every cache rebuild. A coding task goes from $1.76 to $1.40 and a general-purpose subagent run from $8.47 to $7.66. Hard tasks cost a few cents more, because one that arrives while the conversation is on Sonnet pays to bring Opus back.
+One month of one developer's real Claude Code use, replayed through Legato: $507 saved of $5,233, after paying for every cache rebuild. A task that reads as ordinary coding goes from $1.50 to $1.03. One the rules cannot read stays on its model at one effort step down, and still goes from $1.84 to $1.38, because many of those sit on Sonnet after an earlier free switch. Hard tasks go from 87¢ to 77¢.
 
 The dollars are usage at API list prices on a Max subscription. On sessions that start on Opus the saving is about 8%. Lower effort on the same model is not counted. `legato analyze --since 30d` prints this table for your own history.
 

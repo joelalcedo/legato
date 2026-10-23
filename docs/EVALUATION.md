@@ -7,8 +7,8 @@ subscription, so "dollars" means usage at list prices, not money the developer w
 
 ## The data
 
-The README film and chart use the month from 21 Sep to 23 Oct 2026: 288 sessions, 449 subagent runs,
-52,525 API requests, 1,581 tasks and $5,212 of usage at list prices on current models. The
+The README film and chart use the month from 21 Sep to 23 Oct 2026: 294 sessions, 450 subagent runs,
+52,644 API requests, 1,596 tasks and $5,233 of usage at list prices on current models. The
 analysis below was done on the month to 21 Oct (267 sessions, 443 subagent runs, 51,895
 requests, $5,109) and has not been re-run; where a figure differs between the two, the
 difference is one more day of data. The same account's previous window (18 Sep to 18 Oct) was
@@ -63,6 +63,7 @@ every cache rebuild.
 | Same policy, the window the README film and chart show (288 sessions) | Sep 21 to Oct 23 | $542 (10.4%) | 187 (148) | $91 |
 | Same policy, a day later (294 sessions) | Sep 21 to Oct 23 | $547 (10.5%) | 188 (149) | $91 |
 | + the adversarial review's bundle: no guess when no rule fires; a paid upgrade needs two hard rules, a failed task or plan mode; pastes classified by their edges; general-purpose agents by type | Sep 21 to Oct 23 | $505 (9.7%) | 100 (91) | $27 |
+| Same policy, the window the README film and chart now show (294 sessions) | Sep 21 to Oct 23 | $507 (9.7%) | 100 (91) | $27 |
 
 The last row is the current policy. It gives up $42 on this month and buys: paid upgrades on a
 warm cache 34 to 6 and the rebuild bill $91 to $27; "Find why something fails" from -$46 to +$33

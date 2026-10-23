@@ -21,10 +21,16 @@ const pts = ser.filter((_, i) => i % step === 0);
 if (pts[pts.length - 1] !== ser[ser.length - 1]) pts.push(ser[ser.length - 1]);
 writeFileSync(join(out, 'series.js'), 'const SERIES = ' + JSON.stringify(pts.map((p) => [Math.round(p.t / 1000), +p.baseline.toFixed(2), +p.routed.toFixed(2)])) + ';\n');
 
-// tasks by kind, as the analyzer groups them; kinds with fewer than 10 tasks are left out
+// tasks by kind, as the analyzer groups them; kinds with fewer than 15 tasks or under $10 either way are left out
+// short names for the charts; the analyzer's full names stay in its own table
+const LABELS = {
+  'No clear signal (stays put, effort one step down)': 'No clear signal',
+  'Quick task (commit, find a file, a greeting)': 'Quick task',
+  'A "yes, go ahead"': 'A "yes, go ahead"',
+};
 const kinds = d.byKind
-  .filter((k) => k.tasks >= 10 && k.kind !== 'Other subagent run')
-  .map((k) => ({ kind: k.kind, tasks: k.tasks, without: +k.meanBaselineUsd.toFixed(2), with: +k.meanRoutedUsd.toFixed(2), total: Math.round(k.savedUsd) }));
+  .filter((k) => k.tasks >= 15 && Math.abs(k.savedUsd) >= 10 && k.kind !== 'Other subagent run')
+  .map((k) => ({ kind: k.kind, label: LABELS[k.kind] ?? k.kind, tasks: k.tasks, without: +k.meanBaselineUsd.toFixed(2), with: +k.meanRoutedUsd.toFixed(2), total: Math.round(k.savedUsd) }));
 const totals = {
   without: Math.round(d.totals.baselineUsd),
   with: Math.round(d.totals.routedUsd),

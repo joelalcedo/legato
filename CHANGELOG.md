@@ -98,3 +98,6 @@
   `docs/REFERENCE.md` holds the commands, options and limitations.
 - `.claude/agents/plain-english-reviewer.md`: an adversarial reviewer (English teacher and
   economist) for everything a person reads, including the CLI's own sentences.
+- The film and the savings chart are re-cut for the routing after the adversarial review: the
+  general-purpose agents stay on Opus, the closing question stays put one effort step down, and
+  the month reads $507 of $5,233.
