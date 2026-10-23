@@ -6,9 +6,9 @@ Cache-aware model routing for Claude Code. Legato runs Claude Code through a loc
 
 ## Demo
 
-![A Claude Code session running through Legato: the header says Dynamic mode where a model name would be, the status line says which model each task ran on and what it saved, then one month of use is replayed as a chart](docs/demo.gif)
+A real session replayed through Legato's router, with the status line reporting each switch, then one month of real use replayed.
 
-Sixty-two seconds: a real session replayed through Legato's router, with the status line reporting each switch, then one month of real use replayed. The same film as video: [docs/demo.mp4](docs/demo.mp4).
+![A Claude Code session running through Legato: the header says Dynamic mode where a model name would be, the status line says which model each task ran on and what it saved, then one month of use is replayed as a chart](docs/demo.gif)
 
 ## Quick start
 
