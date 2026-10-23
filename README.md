@@ -4,12 +4,6 @@
 
 Cache-aware model routing for Claude Code. Legato runs Claude Code through a local proxy and routes each task to Haiku, Sonnet or Opus at the effort the task needs, switching model only when the saving covers the cost of rebuilding the prompt cache. Cursor and GitHub Copilot call this Auto. Claude Code has no native version ([#27665](https://github.com/anthropics/claude-code/issues/27665)). On one month of one developer's real use, Legato cut usage 10% at API list prices.
 
-## Demo
-
-A real session replayed through Legato's router, with the status line reporting each switch, then one month of real use replayed.
-
-![A Claude Code session running through Legato: the header says Dynamic mode where a model name would be, the status line says which model each task ran on and what it saved, then one month of use is replayed as a chart](docs/demo.gif)
-
 ## Quick start
 
 ```bash
@@ -26,6 +20,12 @@ legato start --mode shadow                       # decide and log, but send ever
 ```
 
 Nothing leaves your machine except the API calls Claude Code already makes.
+
+## Demo
+
+A real session replayed through Legato's router, with the status line reporting each switch, then one month of real use replayed.
+
+![A Claude Code session running through Legato: the header says Dynamic mode where a model name would be, the status line says which model each task ran on and what it saved, then one month of use is replayed as a chart](docs/demo.gif)
 
 ## How it works
 
