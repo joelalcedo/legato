@@ -73,9 +73,61 @@ export interface TurnResult {
   routedUsd: number;
 }
 
+/** What a task of one kind costs, with and without routing, across the replay. */
+export interface KindResult {
+  kind: string;
+  tasks: number;
+  meanBaselineUsd: number;
+  meanRoutedUsd: number;
+  medianBaselineUsd: number;
+  medianRoutedUsd: number;
+  savedUsd: number;
+}
+
+/**
+ * The name a person would give a task, from the agent type or the classifier's signals.
+ * These are the rows of the README's saving chart and of `legato analyze`'s "by kind" table.
+ */
+export function kindOf(t: Pick<TurnResult, 'agentType' | 'wanted' | 'signals'>): string {
+  const has = (re: RegExp) => t.signals.some((s) => re.test(s));
+  if (t.agentType === 'Explore') return 'Explore agent run';
+  if (t.agentType === 'general-purpose') return 'General-purpose agent run';
+  if (t.agentType !== 'main') return 'Other subagent run';
+  if (t.wanted === 'haiku') return 'Quick task (commit, find a file, a greeting)';
+  if (t.wanted === 'sonnet') return has(/confirmation/) ? 'A "yes, go ahead"' : 'Ordinary coding task';
+  if (t.wanted === 'opus') return has(/diagnosis|hard-bug|retry-after-failure/) ? 'Find why something fails' : 'Design, plan or large change';
+  return 'Other';
+}
+
+export function summarizeKinds(turns: TurnResult[]): KindResult[] {
+  const groups = new Map<string, TurnResult[]>();
+  for (const t of turns) {
+    const k = kindOf(t);
+    groups.set(k, [...(groups.get(k) ?? []), t]);
+  }
+  const median = (xs: number[]) => {
+    const s = [...xs].sort((a, b) => a - b);
+    return s.length ? (s.length % 2 ? s[(s.length - 1) / 2]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2) : 0;
+  };
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  return [...groups.entries()]
+    .map(([kind, ts]) => ({
+      kind,
+      tasks: ts.length,
+      meanBaselineUsd: mean(ts.map((t) => t.baselineUsd)),
+      meanRoutedUsd: mean(ts.map((t) => t.routedUsd)),
+      medianBaselineUsd: median(ts.map((t) => t.baselineUsd)),
+      medianRoutedUsd: median(ts.map((t) => t.routedUsd)),
+      savedUsd: ts.reduce((a, t) => a + (t.baselineUsd - t.routedUsd), 0),
+    }))
+    .sort((a, b) => b.savedUsd - a.savedUsd);
+}
+
 export interface ReplayResult {
   conversations: ConversationResult[];
   turns: TurnResult[];
+  /** Tasks grouped by kind, biggest total saving first. */
+  byKind: KindResult[];
   totals: Omit<ConversationResult, 'id' | 'project' | 'isSubagent' | 'start' | 'end'> & {
     conversations: number;
     subagents: number;
@@ -257,6 +309,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
   return {
     conversations: results.sort((a, b) => b.baselineUsd - a.baselineUsd),
     turns: turns.sort((a, b) => a.at - b.at),
+    byKind: summarizeKinds(turns),
     totals: {
       conversations: results.filter((r) => !r.isSubagent).length,
       subagents: results.filter((r) => r.isSubagent).length,

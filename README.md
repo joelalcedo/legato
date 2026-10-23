@@ -31,7 +31,7 @@ Nothing leaves your machine except the API calls Claude Code already makes.
 
 Legato is a local proxy between Claude Code and the API. For every request it reads the conversation, chooses a model and an effort, rewrites the request when that saves money, and streams the answer back.
 
-What kind of task it is comes from a short list of keyword rules you can read in `src/classifier.ts`: "root cause" and "race condition" point to a hard task, "rename", "commit" and a greeting point to a quick one, and every rule that fires is printed with the decision. No model and no network call sits in that path; `--classifier haiku` asks Haiku 5.5 instead, with an API key.
+What kind of task it is comes from a short list of keyword rules you can read in `src/classifier.ts`: "root cause" and "race condition" point to a hard task, "rename", "commit" and a greeting point to a quick one, and every rule that fires is printed with the decision. When no rule fires the task counts as ordinary, which means Sonnet at medium effort if a switch pays and the current model at a lower effort if it does not; in the month below that was 42% of tasks, and nine in ten of them stayed on the model they were on. A task that ends in failures is escalated, plan mode goes to Opus, and a leading `//o` forces Opus for one task. No model and no network call sits in that path; `--classifier haiku` asks Haiku 5.5 instead, with an API key.
 
 Effort is Claude Code's setting for how long a model thinks before it answers. Legato lowers it on easy tasks and keeps your setting on hard ones. That costs nothing, because nothing in the conversation changes and the cache stays warm.
 
@@ -41,18 +41,16 @@ A switch of model is different. Each model keeps its own cached copy of the conv
 Legato: staying on Opus 5.5 for this task, using medium effort instead of xhigh (a switch to Sonnet 5.5 would cost $0.39 more than it saves) · saved $1.15 this session
 ```
 
-Hard tasks, plan mode and a task that follows a failure go to Opus regardless. A fork, which inherits its parent's whole conversation, stays on the parent's model.
+Subagents are routed at the proxy by what they are, so Explore agents run on Sonnet whatever Claude Code's own subagent model setting does ([#43869](https://github.com/anthropics/claude-code/issues/43869)). A fork, which inherits its parent's whole conversation, stays on the parent's model.
 
 "Saved" is what the same requests would have cost, at API list prices, on the model Claude Code asked for. If the API rejects a rewritten request, Legato sends it once more exactly as Claude Code wrote it. Every decision is logged with its reasons in `~/.legato/decisions.jsonl`.
 
 ## Saving examples
 
-A task is one request from you and everything Claude Code does to finish it, or one subagent run. These are mean costs over one month of one developer's real Claude Code history, replayed through Legato's router, charging for every cache rebuild a switch caused.
+![What a task costs with and without Legato, by kind of task: general-purpose agent runs and ordinary coding tasks carry the saving, hard tasks cost a few cents more](docs/savings.gif)
 
-![Mean cost of a task with and without Legato, by kind of task](docs/img/cost-per-task.png)
+One month of one developer's real Claude Code use, replayed through Legato: $542 saved of $5,212, after paying for every cache rebuild. A coding task goes from $1.76 to $1.40 and a general-purpose subagent run from $8.47 to $7.66. Hard tasks cost a few cents more, because one that arrives while the conversation is on Sonnet pays to bring Opus back.
 
-Ordinary coding tasks and general-purpose subagent runs are where the saving is: a coding task goes from $1.74 to $1.40, a general-purpose run from $8.51 to $7.71. The two hard kinds cost a few cents more, 4¢ on a $1.95 design task and 12¢ on an 85¢ debugging task, because a hard task that arrives while the conversation is on Sonnet pays to bring Opus back. Legato pays that rather than leave a hard task on Sonnet.
-
-The film's last scene is the whole month: $529 saved of $5,166, or 10%, after paying for every cache rebuild. Three qualifiers belong next to that number. The developer is on a Claude Max subscription, so the dollars are usage at API list prices; on pay-as-you-go pricing they would be the bill. Part of the saving comes from sessions that began on Fable 5.1 and were moved to Opus at their first request; on sessions that began on Opus the saving is about 8%. Lower effort on the same model is not counted, because its effect on output length is an assumption. Your month will differ: `legato analyze --since 30d` gives your number.
+The dollars are usage at API list prices on a Max subscription. On sessions that start on Opus the saving is about 8%. Lower effort on the same model is not counted. `legato analyze --since 30d` prints this table for your own history.
 
 The arithmetic behind the switching rule, the full evaluation and the roadmap are in `docs/`.

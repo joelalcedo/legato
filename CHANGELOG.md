@@ -60,6 +60,10 @@
 - Removed the stale 64K `max_tokens` clamp for Haiku 5.5.
 
 ### Analyzer
+- `legato analyze` groups tasks by kind (general-purpose agent run, ordinary coding task, Explore
+  agent run, quick task, design or plan, find why something fails) and prints what each kind costs
+  with and without Legato; `--json` carries the same `byKind` summary. The README's savings chart is
+  rendered from it (`scripts/savings-chart`), which replaces the R and ggplot script.
 - `analyze --json` includes one record per task (a user turn and the requests that follow it, or a
   subagent run) with its kind, models, effort and cost with and without routing, and the
   cumulative cost series. `scripts/charts.R` draws the README charts from it.

@@ -279,7 +279,7 @@ async function main(): Promise<void> {
       });
       if (flags.json) {
         process.stdout.write(
-          JSON.stringify({ totals: result.totals, conversations: result.conversations, turns: result.turns, series: result.series, notable: result.notable.slice(0, 200) }, null, 2) + '\n',
+          JSON.stringify({ totals: result.totals, byKind: result.byKind, conversations: result.conversations, turns: result.turns, series: result.series, notable: result.notable.slice(0, 200) }, null, 2) + '\n',
         );
       } else {
         process.stdout.write(textReport(result, cfg, dir) + '\n');

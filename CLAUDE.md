@@ -11,8 +11,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `node dist/cli.js claude`: start the proxy if needed and launch Claude Code through it as "Dynamic mode" (the user runs this; the auto-mode classifier in this repo's sessions blocks starting servers)
 - `node dist/cli.js explain "<prompt>" --context 150000`: inspect one decision
 - `node dist/cli.js analyze --since 30d`: replay real `~/.claude/projects` transcripts (about 35s for 30 days); `--json` adds per-task records and the cost series
-- `Rscript scripts/charts.R analyze.json docs/img`: the README charts (ggplot2, house style from the alcyone research charts)
-- `cd scripts/video && npx hyperframes render --quality looks --output ../../docs/demo.mp4`: the README demo (a HyperFrames composition; the session scene replays a real session from the decision log). Then the ffmpeg line in CONTRIBUTING.md for the GIF.
+- `node scripts/video/make-data.mjs analyze.json`, then in `scripts/video`: `npx hyperframes render ...` for the README film and `--composition savings.html` for the savings chart (CONTRIBUTING.md has the full sequence). The session scene replays a real session from the decision log.
 
 ## Layout
 

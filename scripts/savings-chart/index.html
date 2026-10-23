@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="kinds.js"></script>
+    <style>
+      :root {
+        --ground: #0b0f14;
+        --ink: #e6edf3;
+        --ink-dim: #aab4c2;
+        --accent: #4c8ef7;
+        --green: #3fb950;
+        --red: #f85149;
+        --alone: #c9d1d9;
+        --font-display: Inter, system-ui, sans-serif;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--ground);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        font-family: var(--font-display);
+        color: var(--ink);
+      }
+      #sv-ground {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(1200px 700px at 30% 20%, #121a24 0%, var(--ground) 60%);
+      }
+      #sv-stage {
+        position: absolute;
+        inset: 0;
+      }
+      #sv-title {
+        position: absolute;
+        left: 120px;
+        top: 80px;
+        font-size: 52px;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+      #sv-sub {
+        position: absolute;
+        left: 120px;
+        top: 152px;
+        font-size: 26px;
+        color: var(--ink-dim);
+      }
+      #sv-rows {
+        position: absolute;
+        left: 120px;
+        top: 240px;
+        width: 1680px;
+      }
+      .row {
+        position: relative;
+        height: 98px;
+        opacity: 0;
+      }
+      .row .kind {
+        position: absolute;
+        left: 0;
+        top: 18px;
+        width: 470px;
+        font-size: 28px;
+        font-weight: 500;
+        line-height: 1.2;
+      }
+      .row .kind small {
+        display: block;
+        font-size: 20px;
+        font-weight: 400;
+        color: var(--ink-dim);
+      }
+      .row .track {
+        position: absolute;
+        left: 500px;
+        top: 30px;
+        height: 10px;
+        border-radius: 5px;
+        background: #262c36;
+        transform-origin: left center;
+      }
+      .row .dot {
+        position: absolute;
+        top: 22px;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        margin-left: -13px;
+      }
+      .row .dot.alone {
+        background: var(--alone);
+      }
+      .row .dot.legato {
+        background: var(--accent);
+        box-shadow: 0 0 0 5px rgba(76, 142, 247, 0.18);
+      }
+      .row .val {
+        position: absolute;
+        left: 500px;
+        top: 58px;
+        font-size: 23px;
+        color: var(--ink-dim);
+        white-space: nowrap;
+        opacity: 0;
+      }
+      .row .val b {
+        color: var(--green);
+        font-weight: 600;
+      }
+      .row .val b.neg {
+        color: var(--red);
+      }
+      #sv-axis {
+        position: absolute;
+        left: 620px;
+        top: 850px;
+        width: 1180px;
+        height: 40px;
+        font-size: 22px;
+        color: #8b949e;
+        opacity: 0;
+      }
+      #sv-axis span {
+        position: absolute;
+        transform: translateX(-50%);
+      }
+      #sv-legend {
+        position: absolute;
+        left: 120px;
+        top: 850px;
+        display: flex;
+        gap: 36px;
+        font-size: 22px;
+        color: var(--ink-dim);
+        opacity: 0;
+      }
+      #sv-legend i {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        margin-right: 10px;
+        vertical-align: -2px;
+      }
+      #sv-total {
+        position: absolute;
+        left: 120px;
+        top: 930px;
+        font-size: 40px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        opacity: 0;
+        font-variant-numeric: tabular-nums;
+      }
+      #sv-total b {
+        color: var(--green);
+        font-weight: 700;
+      }
+      #sv-total small {
+        font-size: 24px;
+        font-weight: 400;
+        color: var(--ink-dim);
+        margin-left: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="savings" data-start="0" data-duration="12" data-width="1920" data-height="1080">
+      <div id="sv-ground"></div>
+      <div id="sv-stage" class="clip" data-start="0" data-duration="12" data-track-index="0" data-layout-allow-overlap>
+        <div id="sv-title">What a task costs, with and without Legato</div>
+        <div id="sv-sub"></div>
+        <div id="sv-rows"></div>
+        <div id="sv-legend"><span><i style="background: var(--alone)"></i>Claude Code alone</span><span><i style="background: var(--accent)"></i>With Legato</span></div>
+        <div id="sv-axis"></div>
+        <div id="sv-total"><span id="sv-total-text"></span></div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+        const money = (v) => (Math.abs(v) < 1 ? Math.round(Math.abs(v) * 100) + '¢' : '$' + Math.abs(v).toFixed(2));
+        const dollars = (v) => '$' + Math.round(v).toLocaleString('en-US');
+
+        const kinds = KINDS.slice().sort((a, b) => b.total - a.total);
+        const maxX = Math.max(...kinds.map((k) => Math.max(k.without, k.with))) * 1.05;
+        const W = 1180;
+        const X = (v) => (v / maxX) * W;
+
+        document.getElementById('sv-sub').textContent =
+          "Mean cost of one task, one month of one developer's real Claude Code history (" +
+          TOTALS.sessions + ' sessions, ' + TOTALS.subagents + ' subagent runs), at API list prices, every cache rebuild charged';
+
+        const rows = document.getElementById('sv-rows');
+        kinds.forEach((k, i) => {
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.id = 'row-' + i;
+          const saves = k.total >= 0;
+          const per = k.without - k.with;
+          row.innerHTML =
+            '<div class="kind">' + k.kind + '<small>' + k.tasks.toLocaleString('en-US') + ' tasks</small></div>' +
+            '<div class="track" id="track-' + i + '" style="left:' + (500 + Math.min(X(k.with), X(k.without))) + 'px;width:' + Math.abs(X(k.without) - X(k.with)) + 'px"></div>' +
+            '<div class="dot alone" id="alone-' + i + '" style="left:' + (500 + X(k.without)) + 'px"></div>' +
+            '<div class="dot legato" id="legato-' + i + '" style="left:' + (500 + X(k.without)) + 'px"></div>' +
+            '<div class="val" id="val-' + i + '">' +
+            money(k.without) + ' alone, ' + money(k.with) + ' with Legato: ' +
+            (saves ? '<b>saves ' + money(per) + ' per task</b>, about $' + Math.abs(k.total) + ' in all' : '<b class="neg">costs ' + money(-per) + ' more per task</b>, about $' + Math.abs(k.total) + ' in all') +
+            '</div>';
+          rows.appendChild(row);
+        });
+
+        const axis = document.getElementById('sv-axis');
+        const tickStep = maxX > 6 ? 2 : 1;
+        for (let v = 0; v <= maxX; v += tickStep) {
+          const s = document.createElement('span');
+          s.style.left = X(v) + 'px';
+          s.textContent = '$' + v;
+          axis.appendChild(s);
+        }
+        const saved = TOTALS.without - TOTALS.with;
+        const pct = Math.round((saved / TOTALS.without) * 100);
+        const totalText = document.getElementById('sv-total-text');
+
+        // title, then each row: the grey dot lands, the blue dot slides to where Legato puts it
+        tl.fromTo('#sv-title', { opacity: 1 }, { opacity: 1, duration: 0.1 }, 0);
+        tl.fromTo('#sv-sub', { opacity: 0 }, { opacity: 1, duration: 0.35, ease: 'power2.out' }, 0.2);
+        tl.fromTo(['#sv-legend', '#sv-axis'], { opacity: 0 }, { opacity: 1, duration: 0.35, ease: 'power2.out' }, 0.5);
+        kinds.forEach((k, i) => {
+          const at = 0.8 + i * 0.6;
+          tl.fromTo('#row-' + i, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.3, ease: 'power3.out' }, at);
+          tl.fromTo('#track-' + i, { scaleX: 0, transformOrigin: k.with <= k.without ? 'right center' : 'left center' }, { scaleX: 1, duration: 0.6, ease: 'expo.out' }, at + 0.25);
+          tl.fromTo('#legato-' + i, { x: 0 }, { x: X(k.with) - X(k.without), duration: 0.6, ease: 'expo.out' }, at + 0.25);
+          tl.fromTo('#val-' + i, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, at + 0.55);
+        });
+        const T = 0.8 + kinds.length * 0.6 + 0.4;
+        const o = { v: 0 };
+        tl.fromTo('#sv-total', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.4, ease: 'expo.out' }, T);
+        tl.to(o, {
+          v: saved,
+          duration: 1.3,
+          ease: 'power3.out',
+          onUpdate: () => {
+            totalText.innerHTML = 'One month: <b>' + dollars(o.v) + '</b> saved of ' + dollars(TOTALS.without) + ', ' + pct + '%<small>after paying for every cache rebuild</small>';
+          },
+        }, T + 0.05);
+        tl.to('#sv-stage > *', { opacity: 0, filter: 'blur(8px)', duration: 0.3, ease: 'power3.in' }, 11.65);
+        window.__timelines['savings'] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

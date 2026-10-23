@@ -6,3 +6,6 @@ report.html
 scripts/video/.hyperframes/
 scripts/video/renders/
 scripts/video/node_modules/
+scripts/savings-chart/.hyperframes/
+scripts/savings-chart/renders/
+scripts/savings-chart/node_modules/

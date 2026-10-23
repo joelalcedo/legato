@@ -27,37 +27,36 @@ npm run demo       # replay the synthetic samples, write examples/sample-report.
 - After changing anything a person reads, run the `plain-english-reviewer` agent in
   `.claude/agents/` over it and act on what it finds.
 
-## The README charts
-
-`scripts/charts.R` draws both charts from the output of `legato analyze --since <date> --json`.
-That JSON holds the first words of real prompts, so it stays out of the repository; only the PNGs
-in `docs/img/` go in. Needs R with ggplot2, dplyr, tidyr, jsonlite, scales and ggrepel.
-
-```bash
-legato analyze --since 2026-09-21 --json > /tmp/analyze.json
-Rscript scripts/charts.R /tmp/analyze.json docs/img
-```
-
 ## The demo video
 
-`docs/demo.gif` and `docs/demo.mp4` are rendered from `scripts/video`, a [HyperFrames](https://github.com/heygen-com/hyperframes)
-composition: HTML and GSAP, rendered frame by frame in headless Chrome, so every render is the same.
+`docs/demo.gif`, `docs/demo.mp4` and `docs/savings.gif` are rendered with
+[HyperFrames](https://github.com/heygen-com/hyperframes): HTML and GSAP, rendered frame by frame in
+headless Chrome, so every render is the same. `scripts/video` is the 62-second film;
+`scripts/savings-chart` is the 12-second chart of what a task costs with and without Legato.
 The session scene replays a real session from the decision log: the prompts, token counts and
 timings are the logged ones, and the routing and the savings are that session run through today's
 router at list prices, with the cold-cache rebuild of the Opus turn charged. The assistant's replies
-are abridged. The chart scene draws the cumulative series from `legato analyze --json`.
+are abridged. The chart scene and the savings chart read `compositions/series.js` and
+`compositions/kinds.js`, which `make-data.mjs` writes from `legato analyze --json`. That JSON holds
+the first words of real prompts, so it stays out of the repository; the data files hold only
+timestamps, dollar totals and the by-kind summary (`kinds.js` is written to both projects).
 
 ```bash
+legato analyze --since 2026-09-21 --json > /tmp/analyze.json
+node scripts/video/make-data.mjs /tmp/analyze.json
 cd scripts/video
-npx hyperframes check --json            # lint, layout, motion
-npx hyperframes snapshot --at 9,20,34,50  # look before rendering
+npx hyperframes check --json                       # lint, layout, motion
+npx hyperframes snapshot --at 9,20,34,50           # look before rendering
 npx hyperframes render --quality looks --output ../../docs/demo.mp4
-ffmpeg -y -i ../../docs/demo.mp4 -vf "fps=12,scale=1120:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" ../../docs/demo.gif
+cd ../savings-chart && npx hyperframes render --quality looks --output ../../docs/savings.mp4 && cd ../video
+GIF='fps=12,scale=1120:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4'
+ffmpeg -y -i ../../docs/demo.mp4 -vf "$GIF" ../../docs/demo.gif
+ffmpeg -y -i ../../docs/savings.mp4 -vf "$GIF" ../../docs/savings.gif
 ```
 
 Needs Node 22+ and ffmpeg. To change the session, edit the lines and the timings in
-`compositions/session.html`; to refresh the chart, regenerate `compositions/series.js` from the
-`series` field of `analyze --json` (300 points is plenty).
+`compositions/session.html`. The numbers quoted in the README come from the same `analyze` run;
+its text report prints the by-kind table.
 
 ## Reporting a transcript the reader gets wrong
 

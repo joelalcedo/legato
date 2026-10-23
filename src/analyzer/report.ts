@@ -35,6 +35,16 @@ export function textReport(r: ReplayResult, cfg: RouterConfig, source: string): 
     );
   }
   if (r.unpricedModels.length) lines.push(`  Unpriced models skipped: ${r.unpricedModels.join(', ')}`);
+  const kinds = r.byKind.filter((k) => k.tasks >= 10);
+  if (kinds.length) {
+    lines.push('', '  By kind of task (a user turn and the requests that follow it, or one subagent run; means at list prices, rebuilds charged):');
+    lines.push(`  ${'kind'.padEnd(46)} ${'tasks'.padStart(6)} ${'alone'.padStart(8)} ${'Legato'.padStart(8)} ${'saved'.padStart(9)}`);
+    for (const k of kinds) {
+      lines.push(
+        `  ${k.kind.padEnd(46)} ${int(k.tasks).padStart(6)} ${usd(k.meanBaselineUsd).padStart(8)} ${usd(k.meanRoutedUsd).padStart(8)} ${usd(k.savedUsd).padStart(9)}`,
+      );
+    }
+  }
   lines.push('');
   return lines.join('\n');
 }

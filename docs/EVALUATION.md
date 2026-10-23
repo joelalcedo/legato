@@ -7,8 +7,8 @@ subscription, so "dollars" means usage at list prices, not money the developer w
 
 ## The data
 
-The README charts use the month from 21 Sep to 22 Oct 2026: 280 sessions, 446 subagent runs,
-52,217 API requests, 1,552 tasks and $5,166 of usage at list prices on current models. The
+The README film and chart use the month from 21 Sep to 23 Oct 2026: 288 sessions, 449 subagent runs,
+52,525 API requests, 1,581 tasks and $5,212 of usage at list prices on current models. The
 analysis below was done on the month to 21 Oct (267 sessions, 443 subagent runs, 51,895
 requests, $5,109) and has not been re-run; where a figure differs between the two, the
 difference is one more day of data. The same account's previous window (18 Sep to 18 Oct) was
@@ -57,30 +57,36 @@ every cache rebuild.
 | + the user's /effort is a ceiling; forks inherit the parent's context | | $691 (12.7%) | 163 | $89 |
 | Same policy, next window | Sep 21 to Oct 21 | $473 (9.3%) | 151 (117) | $82 |
 | + route Explore subagents to Sonnet by type; hold forks; hold moves to a cheaper model that would drop thinking | Sep 21 to Oct 21 | $504 (9.9%) | 173 (139) | $82 |
-| Same policy, the window the README charts show | Sep 21 to Oct 22 | $529 (10.2%) | 180 (143) | $86 |
-| Same policy, same window a day later (286 sessions) | Sep 21 to Oct 22 | $540 (10.4%) | 184 (145) | $91 |
+| Same policy, a day later (280 sessions) | Sep 21 to Oct 22 | $529 (10.2%) | 180 (143) | $86 |
+| Same policy, same window with the day's new sessions (286) | Sep 21 to Oct 22 | $540 (10.4%) | 184 (145) | $91 |
 | + greetings go to Haiku | Sep 21 to Oct 22 | $540 (10.4%) | 186 (147) | $91 |
+| Same policy, the window the README film and chart show (288 sessions) | Sep 21 to Oct 23 | $542 (10.4%) | 187 (148) | $91 |
 
 The gap between 12.7% and 9.9% comes from the data: the earlier window had sessions
 started on Fable 5.1, which the router moves to Opus at the first request, and that one kind of
 switch was 46% of its savings. On sessions started on Opus the saving is about 8% in both windows.
 
-By kind of task, in the README's window (a task is a user turn and the requests that follow it,
-or one subagent run; costs at list prices, rebuilds included; the mean is what the chart shows,
-the median is given because a few long runs pull the means up):
+By kind of task, in the README's window (21 Sep to 23 Oct 2026, 288 sessions, $542 saved of $5,212; a
+task is a user turn and the requests that follow it, or one subagent run; costs at list prices,
+rebuilds charged; the mean is what the chart shows):
 
-| Task | Count | Mean, Claude Code alone | Mean, with Legato | Median, alone | Median, with Legato | Saved per task | Saved in all |
-| - | - | - | - | - | - | - | - |
-| General-purpose agent run | 338 | $8.51 | $7.71 | $4.88 | $4.35 | $0.80 | $271 |
-| Ordinary coding task | 703 | $1.74 | $1.40 | $0.69 | $0.57 | $0.34 | $242 |
-| Explore agent run | 26 | $2.42 | $1.21 | $2.17 | $1.09 | $1.20 | $31 |
-| Quick task (commit, find a file) | 13 | $2.84 | $0.71 | $1.71 | $0.34 | $2.13 | $28 |
-| Design, plan or large change | 82 | $1.95 | $2.00 | $1.28 | $1.18 | -$0.04 | -$4 |
-| Find why something fails | 370 | $0.85 | $0.97 | $0.36 | $0.35 | -$0.12 | -$43 |
+| Task | Count | Mean, Claude Code alone | Mean, with Legato | Saved per task | Saved in all |
+| - | - | - | - | - | - |
+| General-purpose agent run | 340 | $8.47 | $7.66 | $0.80 | $273 |
+| Ordinary coding task | 717 | $1.76 | $1.40 | $0.36 | $256 |
+| Explore agent run | 27 | $2.35 | $1.18 | $1.17 | $32 |
+| Quick task (commit, find a file, a greeting) | 15 | $2.48 | $0.62 | $1.87 | $28 |
+| Design, plan or large change | 82 | $1.95 | $2.00 | -$0.04 | -$4 |
+| Find why something fails | 380 | $0.85 | $0.97 | -$0.12 | -$46 |
 
-The month's cumulative usage with and without Legato is `docs/img/bill-over-the-month.png`, the
-film's last scene as a still. The two hard kinds cost more with Legato because a hard task that
-arrives while the conversation is on Sonnet pays the rebuild to bring Opus back. The earlier switch to Sonnet already priced that
+Of the 1,173 main-thread tasks in the earlier run of this window, 493 (42%) matched no classifier
+rule and took the default, Sonnet at medium effort. 327 of those were held on the current model with
+a lower effort because the switch did not pay, 32 switched for free at a cache boundary, and 2 paid
+for a switch; the rest were already on Sonnet. The default path is where the cache arithmetic, not
+the classifier, decides.
+
+`legato analyze` prints this table for any window. The two hard kinds cost more with Legato because
+a hard task that arrives while the conversation is on Sonnet pays the rebuild to bring Opus back. The earlier switch to Sonnet already priced that
 return in (`returnProbability`), so the pair is still ahead; the per-task view just lands the bill
 on the hard task.
 
