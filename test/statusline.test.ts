@@ -59,8 +59,8 @@ describe('status line', () => {
       formatStatus(held),
       'Legato: staying on Opus 5.5 for this task, using medium effort instead of xhigh (a switch to Sonnet 5.5 would cost $0.95 more than it saves) · saved $0.31 this session',
     );
-    const thinking: SessionStatus = { ...held, held: { model: 'claude-sonnet-5-5', why: 'thinking', thinkingTokens: 40_000 } };
-    assert.match(formatStatus(thinking), /\(a switch to Sonnet 5\.5 would throw away this conversation's thinking\)/);
+    const weak: SessionStatus = { ...held, model: 'claude-sonnet-5-5', held: { model: 'claude-opus-5-5', why: 'weak-upgrade', rebuildUsd: 1.46 } };
+    assert.match(formatStatus(weak), /\(not clearly hard enough to pay \$1\.46 for Opus 5\.5\)/);
   });
 
   it('says it kept the model, and the effort is the one you set, when nothing changed', () => {

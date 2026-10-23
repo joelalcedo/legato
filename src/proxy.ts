@@ -236,23 +236,25 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
     const ttl = (cfg.detectCacheTtl && features.cacheTtlSeconds) || cfg.cacheTtlSeconds;
     const split = splitUsage(usage);
     const prompt = promptTokens(split);
-    const ok = status < 400;
+    // A request Claude Code abandoned mid-stream still ran: the API processed the prompt and
+    // wrote the cache, so the conversation's state learns from it. Its output count is partial.
+    const clientClosed = status === CLIENT_CLOSED;
+    const ran = status < 400 || clientClosed;
 
     // In shadow mode the request really ran on the incoming model; re-price it as if routed.
     const routedModel = decision.route ? decision.model : original.model;
     let costUsd: number;
     let baselineUsd: number;
     const continuous = session.state.model === routedModel;
-    // In live mode the request ran on the routed model even when nothing in it was rewritten:
-    // a hard turn that brings Opus back after a stretch on Sonnet goes up unchanged, and its
-    // cold-cache cost is the rebuild the unrouted baseline would never have paid.
-    const ranAsRouted = cfg.mode === 'live' && decision.route && !failOpen;
+    // In live mode the request ran on the model the proxy named, even when nothing in it was
+    // rewritten: a hard turn that brings Opus back after a stretch on Sonnet goes up unchanged,
+    // and its cold-cache cost is the rebuild the unrouted baseline would never have paid. After
+    // a fail-open it ran as Claude Code sent it, and costs what it cost.
+    const ranAsRouted = cfg.mode === 'live' && decision.route;
     if (ranAsRouted) {
       costUsd = costOf(ranOn, split, cfg.prices);
-      const baseSplit =
-        routedModel === original.model && (continuous || !session.state.model)
-          ? split
-          : resplit(split, session.baseline, t, ttl, 'capByCacheable');
+      const sameAsBaseline = ranOn === original.model && (session.state.model === ranOn || !session.state.model);
+      const baseSplit = sameAsBaseline ? split : resplit(split, session.baseline, t, ttl, 'capByCacheable');
       baselineUsd = costOf(original.model, baseSplit, cfg.prices);
     } else {
       baselineUsd = costOf(original.model, split, cfg.prices);
@@ -266,10 +268,10 @@ export function startProxy(opts: ProxyOptions): Promise<RunningProxy> {
       costUsd = decision.route ? costOf(routedModel, routedSplit, cfg.prices) : baselineUsd;
     }
 
-    if (ok && prompt > 0) {
+    if (ran && prompt > 0) {
       if (decision.route) {
         // After a fail-open the request ran as Claude Code sent it: on its model, at its effort.
-        observe(session.state, failOpen ? original.model : routedModel, prompt, split.output, t, failOpen ? undefined : rewrite?.effort);
+        observe(session.state, failOpen ? original.model : routedModel, prompt, clientClosed ? 0 : split.output, t, failOpen ? undefined : rewrite?.effort);
       }
       session.baseline = { at: t, promptTokens: prompt };
       session.lastIncomingModel = original.model;

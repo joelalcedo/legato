@@ -14,7 +14,7 @@ import { usd } from './html.js';
 import type { Effort } from './models.js';
 import { BUILD, startProxy } from './proxy.js';
 import { displayName, formatStatus, readSessionStatus, readStats } from './stats.js';
-import { capitalize, headline } from './words.js';
+import { capitalize, headline, ttlNote } from './words.js';
 
 const HELP = `legato: cache-aware model routing for Claude Code. Runs Claude Code and routes each task to
         Haiku, Sonnet or Opus at the effort it needs, switching model only when that saves money
@@ -47,7 +47,10 @@ Usage
       end of the window, so the same window can be replayed again after a policy change.
 
   legato explain "<prompt>" [--context 120000] [--current claude-opus-5-5] [--idle 30] [--effort xhigh]
-      Show the decision Legato would make for one prompt, and the arithmetic behind it.
+                            [--incoming claude-opus-5-5] [--ttl 300]
+      Show the decision Legato would make for one prompt, and the arithmetic behind it. --current is
+      the model the conversation is on; --incoming is the model Claude Code asks for, when that differs
+      (an upgrade needs it). --ttl 3600 prices with the 1-hour cache a subscription's main thread uses.
 
   legato stats        Print totals from the running or last proxy session.
   legato statusline   One line for Claude Code's statusLine setting: the model and effort this
@@ -330,7 +333,8 @@ async function main(): Promise<void> {
         const other = displayName(d.held?.model ?? d.model);
         out +=
           `  This assumes about ${cfg.expectedRunRequests} more requests on ${other} and a ${Math.round(cfg.returnProbability * 100)}% chance ` +
-          `of coming back to ${displayName(current)} after its cache has expired.\n`;
+          `of coming back to ${displayName(current)} after its cache has expired.\n` +
+          `  ${ttlNote(cfg.cacheTtlSeconds)}\n`;
       }
       process.stdout.write(out);
       return;

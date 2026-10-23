@@ -32,7 +32,10 @@ export interface RouterConfig {
   detectCacheTtl: boolean;
   /** Expected API requests a newly chosen model will serve before the next switch (tool loops included). */
   expectedRunRequests: number;
-  /** Probability the router switches back before the old model's cache would have expired anyway. */
+  /**
+   * Probability the conversation comes back to the old model after its cache has expired, so the
+   * return pays a full rebuild on it. (A return while that cache is still warm costs nothing.)
+   */
   returnProbability: number;
   /** A downshift must save at least this many USD (net of cache rebuild) to happen. */
   minNetSavingsUsd: number;
@@ -64,11 +67,6 @@ export interface RouterConfig {
   modelAliases: Record<string, string>;
   /** The model name `legato claude` launches Claude Code with; its header shows this text. */
   launchModel: string;
-  /**
-   * Hold a downshift that would discard more than this many tokens of the current model's
-   * thinking, which the cheaper model can't read; effort is adjusted instead.
-   */
-  holdThinkingTokens: number;
   /**
    * A/B trial: route `share` (0-1) of the agents of one type to `model` (arm B), log the arm,
    * and leave the rest as the control (arm A), so completion quality can be compared. Off unless set.
@@ -126,7 +124,6 @@ const BASE: RouterConfig = {
   subagentTiers: { Explore: 'sonnet', 'general-purpose': 'opus' },
   modelAliases: { 'Dynamic mode': 'claude-opus-5-5', dynamic: 'claude-opus-5-5', auto: 'claude-opus-5-5', legato: 'claude-opus-5-5' },
   launchModel: 'Dynamic mode',
-  holdThinkingTokens: 20_000,
   classifier: 'heuristic',
   classifierModel: 'claude-haiku-5-5',
   effortOutputScale: { low: 0.35, medium: 0.6, high: 0.8, xhigh: 1, max: 1.1 },

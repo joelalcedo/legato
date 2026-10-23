@@ -39,7 +39,8 @@ For each `/v1/messages` request:
      were not measurably harder.
    - Plan mode floors at `planTier` (Opus).
    - If the previous task ended with `escalateAfterErrors` or more failing tool results, step one tier above the current model.
-   - A subagent's first request goes by its agent type when `subagentTiers` names it (Explore to Sonnet; general-purpose stays on the parent's model until the live trial says otherwise); a fork is never switched; a move to a cheaper model that would discard more than `holdThinkingTokens` of the current model's thinking is held.
+   - A subagent's first request goes by its agent type when `subagentTiers` names it (Explore to Sonnet; general-purpose stays on the parent's model until the live trial says otherwise); a fork is never switched.
+   - A paid move up to Opus on one hard keyword is held (`strongHardScore`); the same verdict on a Haiku conversation moves it to Sonnet instead, and any ordinary task leaves Haiku.
    - Clamp to `[floor, ceiling]`; the default ceiling is the model Claude Code asked for.
 4. Check the switch against the cache arithmetic (below). If a move to a cheaper model does not pay, stay and apply the classifier's effort instead.
 5. Rewrite: set the model, make parameters valid for it (drop `thinking: disabled` on always-thinking models, clamp `max_tokens`, clamp effort), strip the override prefix, and set the turn's effort.

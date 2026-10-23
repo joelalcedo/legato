@@ -199,7 +199,11 @@ export class StatsStore {
     this.recent.unshift(e);
     if (this.recent.length > 200) this.recent.pop();
     if (this.persist) {
-      appendFileSync(this.logPath, JSON.stringify(e) + '\n');
+      try {
+        appendFileSync(this.logPath, JSON.stringify(e) + '\n');
+      } catch {
+        /* a full or read-only disk costs the log line, never the request */
+      }
       this.flushSoon();
     }
   }
@@ -209,12 +213,17 @@ export class StatsStore {
     this.pending = true;
     setTimeout(() => {
       this.pending = false;
-      writeFileSync(this.statsPath, JSON.stringify(this.stats, null, 2));
+      this.flush();
     }, 250).unref();
   }
 
   flush(): void {
-    if (this.persist) writeFileSync(this.statsPath, JSON.stringify(this.stats, null, 2));
+    if (!this.persist) return;
+    try {
+      writeFileSync(this.statsPath, JSON.stringify(this.stats, null, 2));
+    } catch {
+      /* the totals are rebuilt from the log; a failed write must not take the proxy down */
+    }
   }
 }
 

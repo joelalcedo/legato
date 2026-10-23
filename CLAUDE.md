@@ -5,7 +5,7 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 ## Commands
 
 - `npm install && npm run build`: compile to `dist/`
-- `npm test`: node:test suites via tsx (96 tests)
+- `npm test`: node:test suites via tsx (97 tests)
 - `npm run typecheck`
 - `npm run demo`: replay the synthetic sample transcripts and write `examples/sample-report.html`
 - `node dist/cli.js claude`: start the proxy if needed and launch Claude Code through it as "Dynamic mode" (the user runs this; the auto-mode classifier in this repo's sessions blocks starting servers)
@@ -19,9 +19,9 @@ Cache-aware model routing for Claude Code. TypeScript, Node 20+, zero runtime de
 - `src/engine.ts`: the decision function and cache economics (`decide`, `switchEconomics`, `observe`). Start here.
 - `src/words.ts`: every sentence a person sees (model names, money, the classifier's signals in words, the status line clauses, `headline()`). Engine reasons, the status line, `explain`, the proxy log and the dashboard all go through it.
 - `src/classifier.ts`: heuristic difficulty classifier, plus `classifyWithModel` (Haiku 5.5, optional).
-- `src/features.ts`: signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks, thinking volume.
+- `src/features.ts`: signals extracted from a Messages API request (shared by proxy and analyzer): turn detection, errors, agent type from the system prompt, forks.
 - `src/rewrite.ts`: applies a decision to a request; appends the turn's effort as an effort-only system message at the tail. It never edits Claude Code's own control message (DESIGN.md, "Setting the effort": an edited copy cost about 11K tokens of cache writes per turn in live traffic).
-- `src/sessions.ts`: conversation identity (session id from `metadata.user_id`, forks keyed apart) and on-disk state.
+- `src/sessions.ts`: conversation identity (a session's main thread keyed by its session id so compaction keeps its state, subagents by system prompt and first message, forks keyed apart) and on-disk state.
 - `src/proxy.ts`: HTTP proxy, SSE usage tap, fail-open, decision log, dashboard, per-session status files.
 - `src/stats.ts`: decision log entries, running totals, status files for `legato statusline`.
 - `src/analyzer/`: transcript reader (Claude Code 2.1.28x to 2.1.30x formats), replay, text and HTML reports.

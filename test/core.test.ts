@@ -338,17 +338,15 @@ describe('agents', () => {
     assert.equal(agentTypeOf('You are a helpful assistant.'), undefined);
   });
 
-  it('spots a fork by its boilerplate and counts the thinking in the history', () => {
+  it('spots a fork by its boilerplate', () => {
     const msgs: Message[] = [
       user('build it'),
-      { role: 'assistant', content: [{ type: 'thinking', thinking: 'x'.repeat(3500) }, { type: 'text', text: 'ok' }] },
+      { role: 'assistant', content: [{ type: 'thinking', thinking: '', signature: 'sig' }, { type: 'text', text: 'ok' }] },
       user('name the app'),
       user('<fork-boilerplate>You are a worker fork.</fork-boilerplate>'),
     ];
     assert.equal(forkIndex(msgs), 3);
-    const f = extractFeatures(req(msgs));
-    assert.equal(f.isFork, true);
-    assert.equal(f.thinkingChars, 3500);
+    assert.equal(extractFeatures(req(msgs)).isFork, true);
   });
 
   it('routes an Explore subagent to Sonnet by type on its first request', () => {
@@ -372,21 +370,26 @@ describe('agents', () => {
     assert.match(g.reasons.join(' '), /a fork of the parent conversation: it carries the parent's 300K tokens of history and Opus 5.5's thinking/);
   });
 
-  it('holds a downshift that would discard the current model\'s thinking, and lowers effort instead', () => {
-    const msgs: Message[] = [
-      user('earlier'),
-      { role: 'assistant', content: [{ type: 'thinking', thinking: 'y'.repeat(140_000) }, { type: 'text', text: 'ok' }] },
-      user('add a loading state to the table component, following the plan'),
-    ];
-    const r = req(msgs);
-    const s = warmState('claude-opus-5-5', 25_000);
-    const held = decide({ req: r, features: extractFeatures(r), state: s, cfg, now: NOW, contextTokens: 25_000 });
-    assert.equal(held.model, 'claude-opus-5-5');
-    assert.equal(held.effort, 'medium');
-    assert.match(held.reasons.join(' '), /throw away about 40K tokens of its thinking/);
-    assert.deepEqual(held.held?.why, 'thinking');
-    const free = decide({ req: r, features: extractFeatures(r), state: s, cfg: { ...cfg, holdThinkingTokens: 1_000_000 }, now: NOW, contextTokens: 25_000 });
-    assert.equal(free.model, 'claude-sonnet-5-5');
+  it('leaves Haiku for an ordinary task, and for a weak hard verdict goes to Sonnet rather than Opus', () => {
+    const later = (text: string) => req([user('commit this'), { role: 'assistant', content: 'done' }, user(text)]);
+    const ordinary = later('add a loading state to the table component, following the plan');
+    const up = decide({ req: ordinary, features: extractFeatures(ordinary), state: warmState('claude-haiku-5-5', 60_000), cfg, now: NOW, contextTokens: 60_000 });
+    assert.equal(up.model, 'claude-sonnet-5-5');
+    assert.equal(up.switched, true);
+    assert.equal(up.held, undefined);
+    assert.match(up.reasons.join(' '), /moving up to Sonnet 5\.5 for quality/);
+
+    const weak = later('why does the build fail on CI?');
+    const d = decide({ req: weak, features: extractFeatures(weak), state: warmState('claude-haiku-5-5', 60_000), cfg, now: NOW, contextTokens: 60_000 });
+    assert.equal(d.model, 'claude-sonnet-5-5');
+    assert.equal(d.tier, 'sonnet');
+    assert.equal(d.held, undefined);
+    assert.match(d.reasons.join(' '), /moving up to Sonnet 5\.5, which takes ordinary tasks; the task is not clearly hard enough to pay for Opus 5\.5/);
+
+    // On Sonnet the same weak verdict is still held: that is what the hold is for.
+    const onSonnet = decide({ req: weak, features: extractFeatures(weak), state: warmState('claude-sonnet-5-5', 60_000), cfg, now: NOW, contextTokens: 60_000 });
+    assert.equal(onSonnet.model, 'claude-sonnet-5-5');
+    assert.equal(onSonnet.held?.why, 'weak-upgrade');
   });
 
   it('assigns trial arms deterministically from the brief', () => {

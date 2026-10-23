@@ -154,9 +154,11 @@ been re-read since. The causes, in order of cost:
   count arrives, mostly in subagents. 69% of responses are affected; their output is undercounted,
   so every cost here is a lower bound.
 - Thinking. Thinking blocks are readable only by the model that wrote them or a stronger one. A
-  switch from Opus to Sonnet mid-session discards Opus's earlier reasoning silently. The router
-  holds such a switch when more than `holdThinkingTokens` of thinking would be dropped; on this
-  data the rule never fired, because the economics already held every such switch.
+  switch from Opus to Sonnet mid-session discards Opus's earlier reasoning silently. An earlier
+  rule held such a switch above a thinking volume, measured from the text of the thinking blocks
+  in the request. That text is empty in 10,192 of the 12,229 main-thread blocks on this data
+  (Claude Code sends the signatures back without the text), so the rule could never fire, live or
+  offline, and it was removed on 2026-10-23. What a downshift loses in reasoning stays unmeasured.
 
 ## Where the remaining money is
 

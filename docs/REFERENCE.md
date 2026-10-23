@@ -60,7 +60,7 @@ src/
   engine.ts        decide(): the policy and the switch arithmetic. Start here.
   words.ts         every sentence a person sees: model names, money, reasons, the status line
   classifier.ts    the keyword classifier, and the optional Haiku 5.5 one
-  features.ts      what a request tells us: new task or loop step, errors, agent type, forks, thinking
+  features.ts      what a request tells us: new task or loop step, errors, agent type, forks
   rewrite.ts       applies a decision: model, parameters, the task's effort
   proxy.ts         the HTTP proxy: streaming, retries, decision log, dashboard, status files
   sessions.ts      which conversation a request belongs to, and its state on disk

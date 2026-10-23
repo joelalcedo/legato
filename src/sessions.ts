@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync,
 import { join } from 'node:path';
 import type { ConversationState } from './engine.js';
 import { newState } from './engine.js';
-import { forkIndex, type MessagesRequest } from './features.js';
+import { agentTypeOf, forkIndex, type MessagesRequest } from './features.js';
 import { stableHash } from './hash.js';
 
 export interface SessionRecord {
@@ -32,10 +32,17 @@ export function sessionIdOf(req: MessagesRequest): string | undefined {
  * subagents share it, so the key also hashes the system prompt and the first message:
  * each subagent gets its own routing state. A fork re-sends its parent's history, so
  * the position of its fork boilerplate is hashed too, or it would share the parent's state.
+ *
+ * A session's main thread is keyed by the session alone. Compaction replaces its first
+ * message with a summary, and the thread is still the same conversation: the model it was
+ * on carries over, as it does in the analyzer, which replays one transcript as one conversation.
  */
 export function conversationKey(req: MessagesRequest): string {
-  const first = req.messages?.[0];
-  return stableHash([req.metadata?.user_id ?? '', req.system ?? '', first ?? null, forkIndex(req.messages ?? [])]);
+  const messages = req.messages ?? [];
+  const fork = forkIndex(messages);
+  const userId = req.metadata?.user_id ?? '';
+  if (userId && fork < 0 && agentTypeOf(req.system) === 'main') return stableHash([userId, 'main']);
+  return stableHash([userId, req.system ?? '', messages[0] ?? null, fork]);
 }
 
 const KEEP_MS = 48 * 3_600_000;

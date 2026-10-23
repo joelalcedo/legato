@@ -297,21 +297,7 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
     switched = false;
   }
 
-  // Thinking blocks are readable only by the model that wrote them (or a stronger one), so a
-  // downshift mid-session discards the current model's reasoning even when the cache is cold.
-  const downshift = switched && tierRank(target) < tierRank(currentTier);
-  const thinkingTokens = downshift && !features.isFirstRequest ? Math.round(features.thinkingChars / 3.5) : 0;
-  if (thinkingTokens > cfg.holdThinkingTokens) {
-    economics = switchEconomics(currentModel, model, state, ctx, cfg, now);
-    reasons.push(
-      `staying on ${current}: a switch to ${to} would throw away about ${tokens(thinkingTokens)} of its thinking, ` +
-        `which ${to} cannot read. Legato lowers the effort instead`,
-    );
-    held = { model, why: 'thinking', thinkingTokens, rebuildUsd: economics.rebuildUsd };
-    model = currentModel;
-    target = currentTier;
-    switched = false;
-  } else if (switched && (state.model || !features.isFirstRequest)) {
+  if (switched && (state.model || !features.isFirstRequest)) {
     // With no history for this conversation (router started mid-session), assume the
     // incoming model's cache is warm: that is the expensive case to get wrong.
     const warm = state.model ? cacheIsWarm(state.modelCache[currentModel], now, cfg) : true;
@@ -329,7 +315,19 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
       const a = arithmetic(economics, cfg.expectedRunRequests);
       const upgrading = tierRank(target) > tierRank(currentTier);
       if (upgrading) {
-        if (!strongUpgrade) {
+        // The weak-upgrade hold is about leaving Sonnet for Opus on one hard keyword. Leaving
+        // Haiku is different: Haiku serves quick tasks only, so an ordinary task moves off it,
+        // and a weak "hard" verdict moves it to Sonnet rather than paying for Opus.
+        const weakOpus = !strongUpgrade && target === 'opus';
+        if (weakOpus && currentTier === 'haiku' && allowed.includes('sonnet')) {
+          target = 'sonnet';
+          model = modelForTier(target, incomingModel, incomingTier, cfg);
+          economics = switchEconomics(currentModel, model, state, ctx, cfg, now);
+          reasons.push(
+            `moving up to ${displayName(model)}, which takes ordinary tasks; the task is not clearly hard enough to pay for ${to}. ` +
+              `Rebuilding the cache on ${displayName(model)} costs ${money(arithmetic(economics, cfg.expectedRunRequests).rebuild)}`,
+          );
+        } else if (weakOpus) {
           reasons.push(
             `staying on ${current}: the task is not clearly hard enough to pay ${money(a.rebuild)} to rebuild the cache on ${to}`,
           );

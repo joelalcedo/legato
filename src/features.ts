@@ -80,8 +80,6 @@ export interface Features {
   agentType?: string;
   /** A fork carries its parent's history, cache and thinking; switching it costs the parent's. */
   isFork: boolean;
-  /** Characters of thinking in the history: what a switch to a model that can't read them discards. */
-  thinkingChars: number;
 }
 
 const AGENT_PROMPTS: [RegExp, string][] = [
@@ -110,18 +108,6 @@ export function forkIndex(messages: Message[]): number {
     }
   }
   return -1;
-}
-
-function countThinkingChars(messages: Message[]): number {
-  let n = 0;
-  for (const m of messages) {
-    if (m.role !== 'assistant' || typeof m.content === 'string') continue;
-    for (const b of m.content) {
-      if (b.type === 'thinking' && typeof b.thinking === 'string') n += b.thinking.length;
-      else if (b.type === 'redacted_thinking' && typeof b.data === 'string') n += b.data.length;
-    }
-  }
-  return n;
 }
 
 const REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
@@ -295,7 +281,6 @@ export function extractFeatures(req: MessagesRequest): Features {
   if (m) override = OVERRIDE_MAP[m[1]!.toLowerCase() as keyof typeof OVERRIDE_MAP];
 
   let estimated: number | undefined;
-  let thinking: number | undefined;
   return {
     newUserTurn,
     machineTurn,
@@ -318,9 +303,6 @@ export function extractFeatures(req: MessagesRequest): Features {
     incomingEffort: requestEffort(req),
     agentType: agentTypeOf(req.system),
     isFork: forkIndex(messages) >= 0,
-    get thinkingChars() {
-      return (thinking ??= countThinkingChars(messages));
-    },
   };
 }
 

@@ -107,6 +107,19 @@ describe('sessions', () => {
     assert.notEqual(conversationKey(fork), conversationKey(parent));
     assert.equal(conversationKey(parentLater), conversationKey(parent));
   });
+
+  it('keeps the main thread on one key across compaction, and subagents apart from it', () => {
+    const main: MessagesRequest = { model: 'm', messages: [user('build it'), toolUse, toolResult], metadata: { user_id: userId }, system: MAIN_SYSTEM };
+    const compacted: MessagesRequest = { ...main, messages: [user('This session is being continued from a previous conversation that ran out of context. Summary: ...')] };
+    assert.equal(conversationKey(compacted), conversationKey(main));
+    const explore: MessagesRequest = { ...main, system: 'You are a file search specialist for Claude Code.', messages: [user('find the config loader')] };
+    const explore2: MessagesRequest = { ...explore, messages: [user('find the tests')] };
+    assert.notEqual(conversationKey(explore), conversationKey(main));
+    assert.notEqual(conversationKey(explore), conversationKey(explore2));
+    // A client that is not Claude Code keeps the full key.
+    const other: MessagesRequest = { ...main, system: 'You are a helpful assistant.' };
+    assert.notEqual(conversationKey(other), conversationKey(main));
+  });
 });
 
 /** A fake Anthropic API that records requests and streams a reply with usage. */
@@ -253,6 +266,9 @@ describe('proxy end to end', () => {
       assert.equal(e.ranOn, 'claude-opus-5-5');
       assert.equal(e.effort, undefined);
       assert.equal(e.forwarded, 'original');
+      // It ran on Opus as sent, so it cost what Claude Code alone would have paid: nothing saved, nothing charged.
+      assert.equal(e.costUsd, e.baselineUsd);
+      assert.ok(e.costUsd > 0);
     } finally {
       rejectModel = undefined;
     }

@@ -87,8 +87,6 @@ const SIGNAL_WORDS: Record<string, string> = {
   'run-command': 'running a command',
   acknowledgement: 'an acknowledgement',
   greeting: 'a greeting',
-  'long-prompt': 'a long prompt',
-  'medium-prompt': 'a medium-length prompt',
   confirmation: 'a confirmation',
   'pasted-content': 'pasted content',
 };
@@ -97,11 +95,16 @@ const SIGNAL_WORDS: Record<string, string> = {
 export function describeSignals(signals: string[]): string {
   const words = signals.map((s) => {
     const label = s.replace(/^[+-]\d+\s+/, '');
-    const list = /^(\d+)-item-list$/.exec(label);
-    if (list) return `a ${list[1]}-item list`;
     return SIGNAL_WORDS[label] ?? label;
   });
   return [...new Set(words)].join(', ');
+}
+
+/** Which cache price table `legato explain` used, and how to get the other one. */
+export function ttlNote(cacheTtlSeconds: number): string {
+  return cacheTtlSeconds >= 3600
+    ? 'Priced with the 1-hour cache, which the main thread uses on a subscription.'
+    : 'Priced with the 5-minute cache, as on an API key. On a subscription the main thread uses the 1-hour cache: pass --ttl 3600 to see that case.';
 }
 
 /** What a classified tier means in words: the thing a person would call the task. */
@@ -129,16 +132,14 @@ export function capitalize(s: string): string {
 export interface Hold {
   /** The model the switch would have gone to. */
   model: string;
-  why: 'cost' | 'thinking' | 'weak-upgrade';
+  why: 'cost' | 'weak-upgrade';
   rebuildUsd?: number;
   /** For `cost`: how much the switch would lose over the expected run (positive). */
   lossUsd?: number;
-  thinkingTokens?: number;
 }
 
 export function holdClause(h: Hold): string {
   const to = displayName(h.model);
-  if (h.why === 'thinking') return `a switch to ${to} would throw away this conversation's thinking`;
   if (h.why === 'weak-upgrade') return `not clearly hard enough to pay ${money(h.rebuildUsd ?? 0)} for ${to}`;
   return `a switch to ${to} would cost ${money(h.lossUsd ?? 0)} more than it saves`;
 }
