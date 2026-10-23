@@ -8,6 +8,7 @@ legato --resume                  # any Claude Code argument passes through
 legato start --mode shadow       # proxy only: decide and log, send every request as is
 legato start --mode live         # proxy only, routing on
 legato analyze --since 30d --html report.html   # replay your own transcripts
+legato analyze --since 2026-09-21 --until 2026-10-23T08:00Z   # a fixed window, for before/after comparisons
 legato explain "rename the helper to parseConfig" --context 180000 --effort xhigh   # one decision, with the arithmetic
 legato stats                     # totals from the running or last proxy
 legato statusline                # the line Claude Code's status bar shows (reads the session id on stdin)

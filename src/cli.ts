@@ -40,10 +40,11 @@ Usage
       --trial general-purpose=claude-sonnet-5-5/high:50 routes half of those subagents to
       Sonnet and logs which half each one was in, so the two halves can be compared.
 
-  legato analyze [--dir ~/.claude/projects] [--since 30d] [--preset balanced]
+  legato analyze [--dir ~/.claude/projects] [--since 30d] [--until <date>] [--preset balanced]
                      [--ttl 300] [--html report.html] [--json] [--keep-models]
       Replay your Claude Code transcripts through Legato and report what they
-      would have cost, after paying for every cache rebuild a switch causes.
+      would have cost, after paying for every cache rebuild a switch causes. --until fixes the
+      end of the window, so the same window can be replayed again after a policy change.
 
   legato explain "<prompt>" [--context 120000] [--current claude-opus-5-5] [--idle 30] [--effort xhigh]
       Show the decision Legato would make for one prompt, and the arithmetic behind it.
@@ -121,7 +122,7 @@ function parseSince(v: string | undefined): number | undefined {
   const m = /^(\d+)([dh])$/.exec(v);
   if (m) return Date.now() - Number(m[1]) * (m[2] === 'd' ? 86_400_000 : 3_600_000);
   const t = Date.parse(v);
-  if (Number.isNaN(t)) throw new Error(`--since expects e.g. 30d, 12h or a date, got ${v}`);
+  if (Number.isNaN(t)) throw new Error(`--since and --until expect e.g. 30d, 12h or a date, got ${v}`);
   return t;
 }
 
@@ -267,6 +268,7 @@ async function main(): Promise<void> {
       const cfg = loadConfig(overridesFrom(flags));
       const dir = resolve(str(flags.dir) ?? join(homedir(), '.claude', 'projects'));
       const since = parseSince(str(flags.since));
+      const until = parseSince(str(flags.until));
       const convs = loadConversations(dir, { modifiedSince: since });
       if (!convs.length) {
         process.stderr.write(`No Claude Code transcripts with usage found under ${dir}\n`);
@@ -276,6 +278,7 @@ async function main(): Promise<void> {
       const result = replay(convs, cfg, {
         normalizeGeneration: !flags['keep-models'],
         since,
+        until,
       });
       if (flags.json) {
         process.stdout.write(

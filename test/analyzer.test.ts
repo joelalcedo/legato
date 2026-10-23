@@ -181,6 +181,17 @@ describe('replay', () => {
     assert.ok(g.totals.heldDownshifts >= 1, 'the long session should hold Opus instead of rebuilding a big cache');
   });
 
+  it('until fixes the end of the window: requests at or after it are left out', () => {
+    const convs = loadConversations(SAMPLES);
+    const all = replay(convs, defaultConfig(), { normalizeGeneration: true });
+    const cut = replay(convs, defaultConfig(), { normalizeGeneration: true, until: all.totals.end });
+    assert.ok(cut.totals.requests > 0);
+    assert.ok(cut.totals.requests < all.totals.requests);
+    assert.ok(cut.totals.end < all.totals.end);
+    const none = replay(convs, defaultConfig(), { normalizeGeneration: true, until: all.totals.start });
+    assert.equal(none.totals.requests, 0);
+  });
+
   it('conservative routes nothing below Sonnet', () => {
     const r = replay(loadConversations(SAMPLES), defaultConfig('conservative'), { normalizeGeneration: true });
     assert.equal(r.totals.tierMix.haiku ?? 0, 0);

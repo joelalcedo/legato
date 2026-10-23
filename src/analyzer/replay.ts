@@ -14,6 +14,8 @@ export interface ReplayOptions {
   normalizeGeneration: boolean;
   /** Only requests at or after this time (ms since epoch). */
   since?: number;
+  /** Only requests before this time (ms since epoch), so a window can be replayed again later unchanged. */
+  until?: number;
 }
 
 export interface NotableDecision {
@@ -180,6 +182,7 @@ export function replay(convs: Conversation[], cfg: RouterConfig, opts: ReplayOpt
 
     for (const rq of conv.requests) {
       if (opts.since && rq.timestamp < opts.since) continue;
+      if (opts.until && rq.timestamp >= opts.until) continue;
       const split = splitUsage(rq.usage);
       const prompt = promptTokens(split);
       if (prompt === 0 && split.output === 0) continue;
