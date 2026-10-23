@@ -14,6 +14,11 @@ export function effortRank(e: Effort): number {
   return EFFORT_ORDER.indexOf(e);
 }
 
+/** One effort level below `e`, or `e` itself at the bottom. */
+export function stepDownEffort(e: Effort): Effort {
+  return EFFORT_ORDER[Math.max(0, effortRank(e) - 1)]!;
+}
+
 /** Map a model ID onto a capability tier by its family name. */
 export function tierOf(model: string): Tier | undefined {
   const m = normalizeModel(model);

@@ -44,6 +44,17 @@ export interface RouterConfig {
   switchMidLoop: boolean;
   /** Plan mode always runs on at least this tier. */
   planTier: Tier;
+  /**
+   * A classifier "hard" verdict pays for a cache rebuild to a bigger model only when its score
+   * reaches this; below it the upgrade waits for a free cache boundary, a task that ended in
+   * failures, or plan mode. One keyword scores 3; two score 5 or more.
+   */
+  strongHardScore: number;
+  /**
+   * When no classifier rule fires: 'current' keeps the model the conversation is on and lowers
+   * the effort one step below the user's setting; a tier name routes to that tier as the guess.
+   */
+  noSignalTier: 'current' | Tier;
   /** Tier for a subagent's first request by agent type (read from its system prompt); the classifier decides otherwise. */
   subagentTiers: Partial<Record<string, Tier>>;
   /**
@@ -108,7 +119,11 @@ const BASE: RouterConfig = {
   escalateAfterErrors: 2,
   switchMidLoop: false,
   planTier: 'opus',
-  subagentTiers: { Explore: 'sonnet' },
+  strongHardScore: 5,
+  noSignalTier: 'current',
+  // General-purpose agents stay on the parent's model until the live trial says Sonnet holds up;
+  // routing them by the words in their brief saved money by accident, not by evidence.
+  subagentTiers: { Explore: 'sonnet', 'general-purpose': 'opus' },
   modelAliases: { 'Dynamic mode': 'claude-opus-5-5', dynamic: 'claude-opus-5-5', auto: 'claude-opus-5-5', legato: 'claude-opus-5-5' },
   launchModel: 'Dynamic mode',
   holdThinkingTokens: 20_000,
@@ -131,6 +146,7 @@ const PRESETS: Record<Preset, Partial<RouterConfig>> = {
     returnProbability: 0.4,
     minNetSavingsUsd: 0.05,
     escalateAfterErrors: 1,
+    strongHardScore: 3,
   },
   balanced: {},
   aggressive: {
@@ -139,6 +155,8 @@ const PRESETS: Record<Preset, Partial<RouterConfig>> = {
     minNetSavingsUsd: 0,
     freeSwitchTokens: 20_000,
     escalateAfterErrors: 3,
+    strongHardScore: 6,
+    noSignalTier: 'sonnet',
   },
 };
 

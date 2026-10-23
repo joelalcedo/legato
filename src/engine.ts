@@ -2,7 +2,7 @@ import { classify, type Classification } from './classifier.js';
 import type { RouterConfig } from './config.js';
 import type { Features, MessagesRequest } from './features.js';
 import { shareOf } from './hash.js';
-import { clampEffort, EFFORT_ORDER, effortRank, tierOf, tierRank, TIER_ORDER, type Effort, type Tier } from './models.js';
+import { clampEffort, EFFORT_ORDER, effortRank, stepDownEffort, tierOf, tierRank, TIER_ORDER, type Effort, type Tier } from './models.js';
 import { priceFor, type Price } from './pricing.js';
 import { arithmetic, article, describeSignals, displayName, money, money1, rebuildPhrase, taskKind, tierName, tokens, type Hold } from './words.js';
 
@@ -234,8 +234,21 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
     classification = given ?? classify(features.userText);
     target = classification.tier;
     effort = classification.effort;
-    const why = classification.signals.length ? ` (${describeSignals(classification.signals)})` : '';
-    reasons.push(`looks like ${taskKind(target)}${why}`);
+    if (classification.signals.length === 0) {
+      // Nothing in the request says how hard it is. Guessing a model is how a router gets brittle;
+      // the robust move is to stay where the conversation is and ease the effort one step.
+      target = cfg.noSignalTier === 'current' ? clampTier(currentTier, allowed) : cfg.noSignalTier;
+      const asked = features.incomingEffort as Effort | undefined;
+      effort = asked && EFFORT_ORDER.includes(asked) ? stepDownEffort(asked) : cfg.tierEffort[target];
+      const what = features.userText.trim() ? 'nothing in the request says how hard it is' : 'a message with no text, so nothing to go on';
+      reasons.push(
+        cfg.noSignalTier === 'current'
+          ? `${what}: staying on ${displayName(modelForTier(target, incomingModel, incomingTier, cfg))} one effort step below your setting`
+          : `${what}: ${tierName(target)} one effort step below your setting`,
+      );
+    } else {
+      reasons.push(`looks like ${taskKind(target)} (${describeSignals(classification.signals)})`);
+    }
     if (features.planMode && tierRank(target) < tierRank(cfg.planTier)) {
       target = cfg.planTier;
       effort = cfg.tierEffort[cfg.planTier];
@@ -250,7 +263,12 @@ export function decide({ req, features, state, cfg, now, contextTokens, classifi
         strongUpgrade = true;
       }
     }
-    if (classification.tier === 'opus') strongUpgrade = true;
+    // A "hard" verdict on one keyword is the classifier's most brittle call. It still routes to
+    // Opus where that is free; paying to rebuild a warm cache takes a stronger score, a task
+    // that just ended in failures, or plan mode.
+    if (classification.tier === 'opus') {
+      strongUpgrade ||= classification.hard >= cfg.strongHardScore || features.previousTaskErrors >= 1 || features.planMode;
+    }
   }
 
   const clamped = clampTier(target, allowed);

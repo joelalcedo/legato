@@ -8,6 +8,23 @@
   repository `github.com/joelalcedo/legato`.
 
 ### Routing
+- From an adversarial review of the routing on a month of real use:
+  - When no classifier rule fires, there is no guess: the conversation stays on its current model
+    at one effort step below the user's setting (`noSignalTier`, default `current`; the aggressive
+    preset guesses Sonnet). Guessing Sonnet had bought nothing the cache arithmetic did not decide,
+    and cost two effort steps on 42% of tasks.
+  - A classifier "hard" verdict pays for a warm-cache rebuild only with a score of at least
+    `strongHardScore` (5), a previous task that ended in failures, or plan mode. One keyword on a
+    Sonnet session had been 88% of the rebuild bill, for tasks no harder than the rest.
+  - Prompts over 1,200 characters are classified by their first and last 400 characters; length and
+    list bonuses are gone. Pasted logs and pages had been "hard" without exception.
+  - General-purpose subagents stay on the parent's model by type until the live trial reports; 45 of
+    them had gone to Sonnet because their brief contained a word like "investigate".
+  - The security rule no longer matches "security-guidance" or "security-master"; confirmations of up
+    to four extra words are recognised; a user message with no text (an image alone) is the user's
+    turn, not a housekeeping prompt.
+  - Same window before and after: $547 (10.5%) to $505 (9.7%); rebuilds $91 to $27; paid upgrades 34
+    to 6; the two hard kinds of task from a loss to a saving.
 - Effort is set by appending an effort-only message at the tail of the request, under the
   per-turn-control beta Claude Code already uses, instead of a ledger of inserted messages. Nothing
   is inserted into history, so the cache prefix and preserved thinking blocks stay valid, and a

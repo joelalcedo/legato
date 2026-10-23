@@ -235,7 +235,7 @@ describe('engine', () => {
   });
 
   it('declines an Opus to Sonnet downshift when the warm context is large', () => {
-    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component')]);
+    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component, following the plan')]);
     const s = warmState('claude-opus-5-5', 180_000);
     const d = decide({ req: r, features: extractFeatures(r), state: s, cfg, now: NOW, contextTokens: 180_000 });
     assert.equal(d.model, 'claude-opus-5-5');
@@ -243,14 +243,14 @@ describe('engine', () => {
   });
 
   it('takes the same downshift when the context is small', () => {
-    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component')]);
+    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component, following the plan')]);
     const s = warmState('claude-opus-5-5', 25_000);
     const d = decide({ req: r, features: extractFeatures(r), state: s, cfg, now: NOW, contextTokens: 25_000 });
     assert.equal(d.model, 'claude-sonnet-5-5');
   });
 
   it('keeps a 1h cache warm when the request asks for a 1h TTL', () => {
-    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component')]);
+    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component, following the plan')]);
     (r.messages[0]!.content as { cache_control?: unknown }[])[0]!.cache_control = { type: 'ephemeral', ttl: '1h' };
     const s = warmState('claude-opus-5-5', 180_000, 900);
     const d = decide({ req: r, features: extractFeatures(r), state: s, cfg, now: NOW, contextTokens: 180_000 });
@@ -269,7 +269,7 @@ describe('engine', () => {
   });
 
   it('switches for free once the current cache has expired', () => {
-    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component')]);
+    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, user('add a loading state to the table component, following the plan')]);
     const s = warmState('claude-opus-5-5', 180_000, 900);
     const d = decide({ req: r, features: extractFeatures(r), state: s, cfg, now: NOW, contextTokens: 180_000 });
     assert.equal(d.model, 'claude-sonnet-5-5');
@@ -366,14 +366,17 @@ describe('agents', () => {
     const d = decide({ req: r, features: extractFeatures(r), state: newState(), cfg, now: NOW, contextTokens: 300_000 });
     assert.equal(d.model, 'claude-opus-5-5');
     assert.equal(d.switched, false);
-    assert.match(d.reasons.join(' '), /a fork of the parent conversation: it carries the parent's 300K tokens of history and Opus 5.5's thinking/);
+    // With a preset that guesses Sonnet for an unknown task, the fork rule is what holds it.
+    const g = decide({ req: r, features: extractFeatures(r), state: newState(), cfg: defaultConfig('aggressive'), now: NOW, contextTokens: 300_000 });
+    assert.equal(g.model, 'claude-opus-5-5');
+    assert.match(g.reasons.join(' '), /a fork of the parent conversation: it carries the parent's 300K tokens of history and Opus 5.5's thinking/);
   });
 
   it('holds a downshift that would discard the current model\'s thinking, and lowers effort instead', () => {
     const msgs: Message[] = [
       user('earlier'),
       { role: 'assistant', content: [{ type: 'thinking', thinking: 'y'.repeat(140_000) }, { type: 'text', text: 'ok' }] },
-      user('add a loading state to the table component'),
+      user('add a loading state to the table component, following the plan'),
     ];
     const r = req(msgs);
     const s = warmState('claude-opus-5-5', 25_000);
@@ -400,5 +403,91 @@ describe('agents', () => {
       arms.add(a.arm!);
     }
     assert.deepEqual([...arms].sort(), ['A', 'B']);
+  });
+});
+
+describe('routing under a weak or empty signal', () => {
+  const SDK = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+  const sys = (...parts: string[]) => parts.map((text) => ({ type: 'text', text }));
+  const sonnetWarm = () => warmState('claude-sonnet-5-5', 300_000);
+  const hard = (text: string) => req([user('earlier'), { role: 'assistant', content: 'ok' }, user(text)]);
+
+  it('does not pay to rebuild a warm cache on one hard keyword, but keeps the asked effort', () => {
+    const r = hard('why does the build fail on CI?');
+    r.output_config = { effort: 'xhigh' };
+    const d = decide({ req: r, features: extractFeatures(r), state: sonnetWarm(), cfg, now: NOW, contextTokens: 300_000 });
+    assert.equal(d.model, 'claude-sonnet-5-5');
+    assert.equal(d.held?.why, 'weak-upgrade');
+    assert.equal(d.effort, 'xhigh');
+  });
+
+  it('pays the rebuild when the evidence is strong: two hard signals, a failed task, or plan mode', () => {
+    const strong = hard('investigate the deadlock in the scheduler and find the root cause');
+    assert.equal(decide({ req: strong, features: extractFeatures(strong), state: sonnetWarm(), cfg, now: NOW, contextTokens: 300_000 }).model, 'claude-opus-5-5');
+    const afterFailure = req([user('fix the test'), toolUse('Bash'), toolResult('FAIL 1 test', true), { role: 'assistant', content: 'still failing' }, user('why does the build fail on CI?')]);
+    const d = decide({ req: afterFailure, features: extractFeatures(afterFailure), state: sonnetWarm(), cfg, now: NOW, contextTokens: 300_000 });
+    assert.equal(d.model, 'claude-opus-5-5');
+  });
+
+  it('goes to Opus for free on a first request whatever the score', () => {
+    const r = req([user('why does the build fail on CI?')]);
+    const d = decide({ req: r, features: extractFeatures(r), state: newState(), cfg, now: NOW });
+    assert.equal(d.model, 'claude-opus-5-5');
+    assert.equal(d.switched, false);
+  });
+
+  it('stays put and eases the effort one step when nothing in the request says how hard it is', () => {
+    const r = hard('the second column is misaligned');
+    r.output_config = { effort: 'xhigh' };
+    const warmOpus = warmState('claude-opus-5-5', 300_000);
+    const d = decide({ req: r, features: extractFeatures(r), state: warmOpus, cfg, now: NOW, contextTokens: 300_000 });
+    assert.equal(d.model, 'claude-opus-5-5');
+    assert.equal(d.effort, 'high');
+    assert.equal(d.switched, false);
+    assert.match(d.reasons[0]!, /nothing in the request says how hard it is/);
+    // On a first request too: no guess, stay on what Claude Code asked for.
+    const first = req([user('the second column is misaligned')]);
+    first.output_config = { effort: 'xhigh' };
+    const f = decide({ req: first, features: extractFeatures(first), state: newState(), cfg, now: NOW });
+    assert.equal(f.model, 'claude-opus-5-5');
+    assert.equal(f.effort, 'high');
+    // The aggressive preset guesses Sonnet instead.
+    const g = decide({ req: first, features: extractFeatures(first), state: newState(), cfg: defaultConfig('aggressive'), now: NOW });
+    assert.equal(g.model, 'claude-sonnet-5-5');
+  });
+
+  it('classifies the edges of a paste, not its body', () => {
+    const filler = ('lorem ipsum dolor sit amet ').repeat(20) + '\n';
+    const body = 'security investigate format whitespace deadlock again\n'.repeat(60);
+    const paste = filler + body + filler;
+    const c = classify(paste + 'what does this say?');
+    assert.equal(c.tier, 'sonnet');
+    assert.deepEqual(c.signals, ['pasted-content']);
+    const asked = classify('investigate why this fails and find the root cause:\n' + paste);
+    assert.equal(asked.tier, 'opus');
+    assert.ok(asked.signals.includes('pasted-content'));
+    assert.ok(!classify('the security-guidance plugin blocked the commit, rerun it').signals.some((s) => s.endsWith('security')));
+    assert.ok(classify('yes, go ahead with that').signals.includes('confirmation'));
+  });
+
+  it('keeps a general-purpose agent on Opus by type, whatever its brief says', () => {
+    const r: MessagesRequest = {
+      ...req([user('List the files that mention retries and report them.')]),
+      system: sys(SDK, "You are an agent for Claude Code, Anthropic's official CLI for Claude. Given the user's message"),
+    };
+    const d = decide({ req: r, features: extractFeatures(r), state: newState(), cfg, now: NOW });
+    assert.equal(d.model, 'claude-opus-5-5');
+    assert.match(d.reasons[0]!, /a general-purpose agent, which runs on Opus/);
+  });
+
+  it('treats a message with no text, such as an image alone, as the user\'s turn with nothing to go on', () => {
+    const image: Message = { role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AA==' } } as any] };
+    const r = req([user('earlier'), { role: 'assistant', content: 'ok' }, image]);
+    const f = extractFeatures(r);
+    assert.equal(f.newUserTurn, true);
+    assert.equal(f.machineTurn, false);
+    const d = decide({ req: r, features: f, state: warmState('claude-opus-5-5', 50_000), cfg, now: NOW, contextTokens: 50_000 });
+    assert.equal(d.model, 'claude-opus-5-5');
+    assert.match(d.reasons[0]!, /a message with no text/);
   });
 });

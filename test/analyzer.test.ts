@@ -175,8 +175,10 @@ describe('replay', () => {
     assert.ok(r.totals.routedUsd < r.totals.baselineUsd);
     assert.ok(r.totals.switches > 0);
     assert.ok(r.totals.rebuildUsd > 0);
-    assert.ok(r.totals.heldDownshifts >= 1, 'the long session should hold Opus instead of rebuilding a big cache');
     assert.equal(r.series.length, r.totals.requests);
+    // When unknown tasks are guessed as Sonnet, the long session is held by the cache arithmetic.
+    const g = replay(loadConversations(SAMPLES), { ...defaultConfig(), noSignalTier: 'sonnet' }, { normalizeGeneration: true });
+    assert.ok(g.totals.heldDownshifts >= 1, 'the long session should hold Opus instead of rebuilding a big cache');
   });
 
   it('conservative routes nothing below Sonnet', () => {

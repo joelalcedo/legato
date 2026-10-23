@@ -28,7 +28,7 @@ const HARD: Rule[] = [
   { re: /\b(root cause|investigate|(figure|find) out (why|what)|why (does|is|do|are|did|would)|how come|diagnos)/i, weight: 3, label: 'diagnosis' },
   { re: /\b(race condition|deadlock|memory leak|heisenbug|flaky|intermittent|non-?deterministic)\b/i, weight: 3, label: 'hard-bug' },
   // "security master" is reference data in finance, not infosec.
-  { re: /\b(security(?! master)|vulnerab|exploit|threat model|auth(entication|orization)? flow|cve)\b/i, weight: 3, label: 'security' },
+  { re: /\b(security(?! master)(?!-master)(?!-guidance)|vulnerab|exploit|threat model|auth(entication|orization)? flow|cve)\b/i, weight: 3, label: 'security' },
   { re: /\b(migrat(e|ion)|re-?architect|rewrite|overhaul|large refactor|refactor (the|our|this) (whole|entire))\b/i, weight: 3, label: 'large-change' },
   // "profile" alone is usually a user-profile screen; profiling and profilers are performance work.
   { re: /\b(performance|latency|throughput|optimi[sz]e|profil(ing|er)|bottleneck)\b/i, weight: 2, label: 'performance' },
@@ -53,7 +53,15 @@ const EASY: Rule[] = [
 ];
 
 /** Short confirmations kick off execution of an already-agreed plan: route to the workhorse, not Haiku. */
-const CONFIRM_RE = /^\s*(y|yes|yep|yeah|ok(ay)?|sure|go( ahead)?|do it|proceed|continue|sounds good|lgtm|ship it)\b[.! ]*\S{0,20}$/i;
+const CONFIRM_RE = /^\s*(y|yes|yep|yeah|ok(ay)?|sure|go( ahead)?|do it|proceed|continue|sounds good|lgtm|ship it)\b[,.! ]*(\s*\S{1,12}){0,4}[.! ]*$/i;
+
+/**
+ * Above this length a prompt is mostly pasted content (a log, a diff, a page, an agent's report),
+ * and the ask sits at its top or bottom. The rules read only those edges, so a word like
+ * "security" or "investigate" inside the paste does not decide the model.
+ */
+const PASTE_CHARS = 1200;
+const EDGE_CHARS = 400;
 
 export function classify(text: string): Classification {
   const t = text.trim();
@@ -61,32 +69,23 @@ export function classify(text: string): Classification {
   let hard = 0;
   let easy = 0;
 
+  const pasted = t.length > PASTE_CHARS;
+  const scored = pasted ? t.slice(0, EDGE_CHARS) + '\n' + t.slice(-EDGE_CHARS) : t;
   for (const r of HARD) {
-    if (r.re.test(t)) {
+    if (r.re.test(scored)) {
       hard += r.weight;
       signals.push(`+${r.weight} ${r.label}`);
     }
   }
   for (const r of EASY) {
-    if (r.re.test(t)) {
+    if (r.re.test(scored)) {
       easy += r.weight;
       signals.push(`-${r.weight} ${r.label}`);
     }
   }
-
-  // Length and structure: long, multi-requirement asks tend to be harder.
-  if (t.length > 1200) {
-    hard += 2;
-    signals.push('+2 long-prompt');
-  } else if (t.length > 500) {
-    hard += 1;
-    signals.push('+1 medium-prompt');
-  }
-  const listItems = (t.match(/^\s*(\d+[.)]|[-*•])\s+/gm) ?? []).length;
-  if (listItems >= 4) {
-    hard += 1;
-    signals.push(`+1 ${listItems}-item-list`);
-  }
+  // Length used to count as hard. On real data the long prompts were pastes, and the tasks
+  // after them were small; the length says nothing about the task, so it scores nothing.
+  if (pasted) signals.push('pasted-content');
 
   if (CONFIRM_RE.test(t)) {
     signals.push('confirmation');

@@ -38,13 +38,20 @@ worth, divided by its size.
    measure it.
 2. Effort on subagents. They run at xhigh or max. Measure requests per task by effort level from
    the trial data before lowering it.
+2a. Session momentum as evidence for an upgrade: a task after a 20+ request task was big 26% of the
+   time against 12% otherwise, the best offline predictor the review found. Add the previous task's
+   request count to `Features` and admit it to the `strongHardScore` gate once the replay shows it
+   pays.
 3. Learn expected run length per user from their own transcripts instead of the
    `expectedRunRequests` constant; it is what the switch economics most depend on, and the
    classifier's tier does not predict it.
 4. Context editing experiment: server-side `clear_tool_uses` with a high trigger on
    general-purpose subagents only, in shadow first, measuring re-fetches.
 5. A learned router (RouteLLM-style) behind the same `classify()` interface, trained on the
-   trial's outcomes.
+   trial's outcomes and on transcript self-labels (requests, failing tool results, prompt growth
+   and wall time of the task that followed), with inputs limited to what the proxy sees offline;
+   a logistic model or a small decision tree shipped as frozen weights stays deterministic. One
+   user's month gave AUC 0.69 for "big task" against 0.42 for the rules: real but not enough yet.
 6. Release: publish to npm and put the measured trial result in the README as the headline
    number.
 

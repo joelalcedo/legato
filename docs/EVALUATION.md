@@ -61,6 +61,16 @@ every cache rebuild.
 | Same policy, same window with the day's new sessions (286) | Sep 21 to Oct 22 | $540 (10.4%) | 184 (145) | $91 |
 | + greetings go to Haiku | Sep 21 to Oct 22 | $540 (10.4%) | 186 (147) | $91 |
 | Same policy, the window the README film and chart show (288 sessions) | Sep 21 to Oct 23 | $542 (10.4%) | 187 (148) | $91 |
+| Same policy, a day later (294 sessions) | Sep 21 to Oct 23 | $547 (10.5%) | 188 (149) | $91 |
+| + the adversarial review's bundle: no guess when no rule fires; a paid upgrade needs two hard rules, a failed task or plan mode; pastes classified by their edges; general-purpose agents by type | Sep 21 to Oct 23 | $505 (9.7%) | 100 (91) | $27 |
+
+The last row is the current policy. It gives up $42 on this month and buys: paid upgrades on a
+warm cache 34 to 6 and the rebuild bill $91 to $27; "Find why something fails" from -$46 to +$33
+and "Design, plan or large change" from -$4 to +$15; 391 more tasks running one effort step below
+the user's setting instead of two; and the end of an accident: 45 general-purpose agents (14%) had
+been routed to Sonnet because their brief happened to contain a word like "investigate", and they
+were $253 of the previous headline. The roadmap's trial decides whether general-purpose agents go
+to Sonnet on purpose.
 
 The gap between 12.7% and 9.9% comes from the data: the earlier window had sessions
 started on Fable 5.1, which the router moves to Opus at the first request, and that one kind of
@@ -79,11 +89,29 @@ rebuilds charged; the mean is what the chart shows):
 | Design, plan or large change | 82 | $1.95 | $2.00 | -$0.04 | -$4 |
 | Find why something fails | 380 | $0.85 | $0.97 | -$0.12 | -$46 |
 
-Of the 1,173 main-thread tasks in the earlier run of this window, 493 (42%) matched no classifier
-rule and took the default, Sonnet at medium effort. 327 of those were held on the current model with
-a lower effort because the switch did not pay, 32 switched for free at a cache boundary, and 2 paid
-for a switch; the rest were already on Sonnet. The default path is where the cache arithmetic, not
-the classifier, decides.
+Under the current policy (the last row of the results table, 294 sessions), by kind:
+
+| Task | Count | Mean, Claude Code alone | Mean, with Legato | Saved in all |
+| - | - | - | - | - |
+| No clear signal (stays put, effort one step down) | 540 | $1.84 | $1.37 | $252 |
+| Ordinary coding task | 248 | $1.50 | $1.03 | $116 |
+| Find why something fails | 323 | $0.88 | $0.77 | $33 |
+| Explore agent run | 27 | $2.35 | $1.18 | $32 |
+| Quick task (commit, find a file, a greeting) | 15 | $2.48 | $0.59 | $28 |
+| General-purpose agent run | 341 | $8.45 | $8.39 | $22 |
+| Design, plan or large change | 71 | $1.37 | $1.17 | $15 |
+
+What the adversarial review of the routing found (2026-10-22, scripts and outputs kept out of the
+repository): the classifier's tier predicted a task's real size slightly backwards (AUC 0.42 for a
+task of 20+ requests or 3+ failing tool results, against 0.50 for a coin); the best offline
+predictor was the previous task's request count (0.64). 207 prompts over 5,000 characters were all
+classified hard by the length bonus, and none turned into a big task. The 42% of tasks that matched
+no rule were indistinguishable in size from the rule-matched ordinary ones, and nine in ten of them
+stayed on their model anyway; their only real cost was an effort two steps below the user's setting
+on no evidence. `expectedRunRequests` and `returnProbability` move the result by about a dollar
+across their plausible range, because 673 of 913 main turns after the first arrive with 200K+ tokens
+of warm cache; they stay as they are. A learned classifier on these features reached AUC 0.69 in
+cross-validation on one user's month, which is not enough to ship.
 
 `legato analyze` prints this table for any window. The two hard kinds cost more with Legato because
 a hard task that arrives while the conversation is on Sonnet pays the rebuild to bring Opus back. The earlier switch to Sonnet already priced that

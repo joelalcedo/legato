@@ -261,7 +261,7 @@ describe('proxy end to end', () => {
   it('charges the cold-cache rebuild when a hard turn brings Opus back, although nothing in the request was rewritten', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'sy-rebuild-'));
     await start({ dataDir }, true);
-    const first = user('add a loading state to the table');
+    const first = user('add a loading state to the table, following the plan');
     await send({ messages: [first, control('xhigh')] });
     assert.equal(seen[0]!.body.model, 'claude-sonnet-5-5');
     const hard: Message[] = [first, { role: 'assistant', content: 'done' }, user('Why does the scheduler deadlock under load? Find the root cause.'), control('xhigh')];

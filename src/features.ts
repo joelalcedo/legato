@@ -271,11 +271,17 @@ export function extractFeatures(req: MessagesRequest): Features {
   const messages = req.messages ?? [];
   const lastIdx = lastNonSystemIndex(messages);
   const last = lastIdx >= 0 ? messages[lastIdx] : undefined;
-  const freshIdx = lastFreshUserIndex(messages);
-  const newUserTurn = !!last && last.role === 'user' && lastIdx === freshIdx;
+  let freshIdx = lastFreshUserIndex(messages);
+  let newUserTurn = !!last && last.role === 'user' && lastIdx === freshIdx;
+  const lastBlocks = last ? blocksOf(last.content) : [];
+  // A user message with no text at all (an image alone, or nothing) is still the user's turn,
+  // with nothing to classify. Claude Code's own prompts always carry text.
+  if (!newUserTurn && !!last && last.role === 'user' && !lastBlocks.some((b) => b.type === 'tool_result') && rawTextOf(last).trim() === '') {
+    newUserTurn = true;
+    freshIdx = lastIdx;
+  }
   const userText = newUserTurn && last ? freshUserText(last) : '';
-  const machineTurn =
-    !newUserTurn && !!last && last.role === 'user' && !blocksOf(last.content).some((b) => b.type === 'tool_result');
+  const machineTurn = !newUserTurn && !!last && last.role === 'user' && !lastBlocks.some((b) => b.type === 'tool_result');
 
   const current = countTaskSignals(messages, Math.max(0, freshIdx), messages.length);
   const prevFresh = freshIdx > 0 ? lastFreshUserIndex(messages, freshIdx) : -1;

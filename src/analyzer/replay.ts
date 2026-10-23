@@ -93,6 +93,7 @@ export function kindOf(t: Pick<TurnResult, 'agentType' | 'wanted' | 'signals'>):
   if (t.agentType === 'Explore') return 'Explore agent run';
   if (t.agentType === 'general-purpose') return 'General-purpose agent run';
   if (t.agentType !== 'main') return 'Other subagent run';
+  if (t.signals.length === 0) return 'No clear signal (stays put, effort one step down)';
   if (t.wanted === 'haiku') return 'Quick task (commit, find a file, a greeting)';
   if (t.wanted === 'sonnet') return has(/confirmation/) ? 'A "yes, go ahead"' : 'Ordinary coding task';
   if (t.wanted === 'opus') return has(/diagnosis|hard-bug|retry-after-failure/) ? 'Find why something fails' : 'Design, plan or large change';

@@ -25,10 +25,21 @@ For each `/v1/messages` request:
 1. Pass through if the request has no tools (Claude Code background calls such as titles) or is already on Haiku.
 2. Legato changes nothing while a tool loop is running, that is, while the last message carries only tool results. Switching there would rebuild the cache for one step. Claude Code's own prompts (the next-prompt suggestion after each turn, idle recaps, summaries) are held the same way.
 3. Pick a target at a user turn:
-   - `//h //s //o //f` override, else the classifier's tier and effort.
+   - `//h //s //o //f` override, else the classifier's tier and effort. The classifier reads only
+     the first and last 400 characters of a prompt longer than 1,200, since the rest is pasted
+     content; length itself scores nothing.
+   - When no classifier rule fires, there is no guess: the conversation stays on its current model
+     (`noSignalTier: 'current'`) at one effort step below the user's setting. On a month of real
+     use this was 42% of main-thread tasks, and guessing Sonnet for them had bought nothing the
+     cache arithmetic did not already decide.
+   - A "hard" verdict routes to Opus for free at a cache boundary. Paying to rebuild a warm cache
+     takes a score of at least `strongHardScore` (5: two rules, not one), a previous task that ended
+     in failures, or plan mode; otherwise the task runs on the current model at the user's effort.
+     One keyword on a Sonnet session used to pay a median $1.67 rebuild, and the tasks it bought
+     were not measurably harder.
    - Plan mode floors at `planTier` (Opus).
    - If the previous task ended with `escalateAfterErrors` or more failing tool results, step one tier above the current model.
-   - A subagent's first request goes by its agent type when `subagentTiers` names it; a fork is never switched; a move to a cheaper model that would discard more than `holdThinkingTokens` of the current model's thinking is held.
+   - A subagent's first request goes by its agent type when `subagentTiers` names it (Explore to Sonnet; general-purpose stays on the parent's model until the live trial says otherwise); a fork is never switched; a move to a cheaper model that would discard more than `holdThinkingTokens` of the current model's thinking is held.
    - Clamp to `[floor, ceiling]`; the default ceiling is the model Claude Code asked for.
 4. Check the switch against the cache arithmetic (below). If a move to a cheaper model does not pay, stay and apply the classifier's effort instead.
 5. Rewrite: set the model, make parameters valid for it (drop `thinking: disabled` on always-thinking models, clamp `max_tokens`, clamp effort), strip the override prefix, and set the turn's effort.

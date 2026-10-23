@@ -90,6 +90,7 @@ const SIGNAL_WORDS: Record<string, string> = {
   'long-prompt': 'a long prompt',
   'medium-prompt': 'a medium-length prompt',
   confirmation: 'a confirmation',
+  'pasted-content': 'pasted content',
 };
 
 /** The classifier's signals (`+3 diagnosis`, `-2 vcs`) as a short list of words. */
