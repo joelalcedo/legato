@@ -2,7 +2,11 @@
 
 > *Legato is an Italian musical term meaning "tied together" that indicates notes should be played or sung smoothly and continuously with no silence or gap between them.*
 
-Cache-aware model routing for Claude Code. A local proxy sends each task to Haiku, Sonnet or Opus at the effort it needs, and switches model only when the saving covers rebuilding the prompt cache. Cursor and GitHub Copilot call this Auto. Claude Code has no native version ([#27665](https://github.com/anthropics/claude-code/issues/27665)). Cut usage by 10% on a month of real use at API list prices, cache rebuilds included.
+Cache-aware model routing for Claude Code. A local proxy sends each task to Haiku, Sonnet or Opus at the effort it needs, and switches model only when the saving covers rebuilding the prompt cache. Cursor and GitHub Copilot call this Auto. 
+
+Claude Code has no native version ([#27665](https://github.com/anthropics/claude-code/issues/27665)). 
+
+Cut usage by 10% on a month of real use at API list prices, cache rebuilds included.
 
 ## Quick start
 
